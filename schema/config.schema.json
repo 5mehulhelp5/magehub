@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://magehub.dev/schema/config.schema.json",
+  "type": "object",
+  "required": ["version", "skills"],
+  "properties": {
+    "version": {
+      "type": "string"
+    },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "format": {
+      "type": "string",
+      "enum": ["claude", "opencode", "cursor", "codex", "qoder", "trae", "markdown"],
+      "default": "claude"
+    },
+    "output": {
+      "type": "string"
+    },
+    "include_examples": {
+      "type": "boolean",
+      "default": true
+    },
+    "include_antipatterns": {
+      "type": "boolean",
+      "default": true
+    },
+    "custom_skills_path": {
+      "type": "string"
+    },
+    "registries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "url"],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "public_key": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "allowlist": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false
+}

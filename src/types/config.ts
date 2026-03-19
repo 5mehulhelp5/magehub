@@ -1,0 +1,21 @@
+import type { SupportedTool } from './skill.js';
+
+export type OutputFormat = SupportedTool | 'markdown';
+
+export interface RemoteRegistry {
+  name: string;
+  url: string;
+  public_key?: string;
+}
+
+export interface MageHubConfig {
+  version: string;
+  skills: string[];
+  format?: OutputFormat;
+  output?: string;
+  include_examples?: boolean;
+  include_antipatterns?: boolean;
+  custom_skills_path?: string;
+  registries?: RemoteRegistry[];
+  allowlist?: string[];
+}
