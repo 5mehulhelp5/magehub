@@ -4,5 +4,6 @@ export * from './renderer.js';
 export * from './runtime-assets.js';
 export * from './schema-validator.js';
 export * from './skill-loader.js';
+export * from './skill-normalizer.js';
 export * from './skill-registry.js';
 export * from './skill-validator.js';
