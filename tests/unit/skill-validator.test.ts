@@ -186,4 +186,73 @@ describe('skill-validator', () => {
     expect(result.valid).toBe(false);
     expect(result.errors.some((e) => e.includes('additional'))).toBe(true);
   });
+
+  it('validates skill with instructions_file and reports no errors', async () => {
+    const skillDir = path.join(rootDir, 'skills', 'module', 'ext-instr');
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(
+      path.join(skillDir, 'instructions.md'),
+      '### External\n\nContent.',
+      'utf8',
+    );
+    const yaml = [
+      'id: ext-instr',
+      'name: External Instructions',
+      'version: "1.0.0"',
+      'category: module',
+      'description: Has external instructions',
+      'instructions_file: instructions.md',
+    ].join('\n');
+    await writeFile(path.join(skillDir, 'skill.yaml'), yaml, 'utf8');
+
+    const result = await validateSkillFile(path.join(skillDir, 'skill.yaml'));
+
+    expect(result.valid).toBe(true);
+    expect(result.errors).toEqual([]);
+    expect(result.skill?.instructions).toBe('### External\n\nContent.');
+  });
+
+  it('reports error when instructions_file references a missing file', async () => {
+    const skillDir = path.join(rootDir, 'skills', 'module', 'missing-file');
+    await mkdir(skillDir, { recursive: true });
+    const yaml = [
+      'id: missing-file',
+      'name: Missing File',
+      'version: "1.0.0"',
+      'category: module',
+      'description: References missing file',
+      'instructions_file: nonexistent.md',
+    ].join('\n');
+    await writeFile(path.join(skillDir, 'skill.yaml'), yaml, 'utf8');
+
+    const result = await validateSkillFile(path.join(skillDir, 'skill.yaml'));
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes('ENOENT'))).toBe(true);
+  });
+
+  it('checks heading warnings in externally loaded instructions', async () => {
+    const skillDir = path.join(rootDir, 'skills', 'module', 'ext-heading');
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(
+      path.join(skillDir, 'instructions.md'),
+      '# Top Level\n\n## Second\n\n### OK',
+      'utf8',
+    );
+    const yaml = [
+      'id: ext-heading',
+      'name: External Heading',
+      'version: "1.0.0"',
+      'category: module',
+      'description: External instructions with bad headings',
+      'instructions_file: instructions.md',
+    ].join('\n');
+    await writeFile(path.join(skillDir, 'skill.yaml'), yaml, 'utf8');
+
+    const result = await validateSkillFile(path.join(skillDir, 'skill.yaml'));
+
+    expect(result.valid).toBe(true);
+    expect(result.warnings.length).toBeGreaterThan(0);
+    expect(result.warnings[0]).toContain('headings must start at ###');
+  });
 });

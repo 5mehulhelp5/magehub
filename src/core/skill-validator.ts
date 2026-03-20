@@ -1,9 +1,11 @@
 import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 
 import YAML from 'yaml';
 
 import type { Skill } from '../types/skill.js';
 import { validateSkillSchema } from './schema-validator.js';
+import { normalizeRawSkill } from './skill-normalizer.js';
 
 export interface SkillValidationResult {
   filePath: string;
@@ -20,14 +22,18 @@ function findHeadingWarnings(instructions: string): string[] {
 
   lines.forEach((line, index) => {
     if (/^#\s/.test(line) || /^##\s/.test(line)) {
-      warnings.push(`instructions line ${index + 1}: headings must start at ### or deeper`);
+      warnings.push(
+        `instructions line ${index + 1}: headings must start at ### or deeper`,
+      );
     }
   });
 
   return warnings;
 }
 
-export async function validateSkillFile(filePath: string): Promise<SkillValidationResult> {
+export async function validateSkillFile(
+  filePath: string,
+): Promise<SkillValidationResult> {
   let parsed: unknown;
 
   try {
@@ -47,18 +53,37 @@ export async function validateSkillFile(filePath: string): Promise<SkillValidati
     return {
       filePath,
       valid: false,
-      skillId: typeof (parsed as { id?: unknown }).id === 'string' ? (parsed as { id: string }).id : undefined,
+      skillId:
+        typeof (parsed as { id?: unknown }).id === 'string'
+          ? (parsed as { id: string }).id
+          : undefined,
       errors: schemaValidation.errors,
+      warnings: [],
+    };
+  }
+
+  let skill: Skill;
+  try {
+    const skillDir = path.dirname(filePath);
+    skill = await normalizeRawSkill(schemaValidation.data, skillDir);
+  } catch (error) {
+    return {
+      filePath,
+      valid: false,
+      skillId: schemaValidation.data.id,
+      errors: [
+        error instanceof Error ? error.message : 'File resolution failure',
+      ],
       warnings: [],
     };
   }
 
   return {
     filePath,
-    skillId: schemaValidation.data.id,
+    skillId: skill.id,
     valid: true,
     errors: [],
-    warnings: findHeadingWarnings(schemaValidation.data.instructions),
-    skill: schemaValidation.data,
+    warnings: findHeadingWarnings(skill.instructions),
+    skill,
   };
 }

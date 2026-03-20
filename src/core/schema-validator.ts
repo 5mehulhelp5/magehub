@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import AjvModule, { type ErrorObject, type ValidateFunction } from 'ajv';
 
 import type { MageHubConfig } from '../types/config.js';
-import type { Skill } from '../types/skill.js';
+import type { RawSkill } from '../types/skill.js';
 import { resolveBundledSchemaPath } from './runtime-assets.js';
 
 export interface SchemaValidationResult<T> {
@@ -59,8 +59,8 @@ export function clearSchemaValidatorCache(): void {
 
 export async function validateSkillSchema(
   payload: unknown,
-): Promise<SchemaValidationResult<Skill>> {
-  return validateAgainstSchema<Skill>('skill.schema.json', payload);
+): Promise<SchemaValidationResult<RawSkill>> {
+  return validateAgainstSchema<RawSkill>('skill.schema.json', payload);
 }
 
 export async function validateConfigSchema(

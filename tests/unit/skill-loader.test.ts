@@ -135,6 +135,62 @@ describe('skill-loader', () => {
         loadSkillFile(path.join(invalidDir, 'skill.yaml')),
       ).rejects.toThrow('Invalid skill file');
     });
+
+    it('loads skill with instructions_file reference', async () => {
+      const skillDir = path.join(rootDir, 'skills', 'module', 'module-ext');
+      await mkdir(skillDir, { recursive: true });
+      await writeFile(
+        path.join(skillDir, 'instructions.md'),
+        '### External\n\nLoaded from file.',
+        'utf8',
+      );
+      const yaml = [
+        'id: module-ext',
+        'name: External',
+        'version: "1.0.0"',
+        'category: module',
+        'description: Skill with external instructions',
+        'instructions_file: instructions.md',
+      ].join('\n');
+      await writeFile(path.join(skillDir, 'skill.yaml'), yaml, 'utf8');
+
+      const loaded = await loadSkillFile(path.join(skillDir, 'skill.yaml'));
+
+      expect(loaded.skill.instructions).toBe(
+        '### External\n\nLoaded from file.',
+      );
+      expect(loaded.skill).not.toHaveProperty('instructions_file');
+    });
+
+    it('loads skill with code_file in examples', async () => {
+      const skillDir = path.join(rootDir, 'skills', 'module', 'module-code');
+      await mkdir(path.join(skillDir, 'examples'), { recursive: true });
+      await writeFile(
+        path.join(skillDir, 'examples', 'demo.php'),
+        '<?php echo "hello";',
+        'utf8',
+      );
+      const yaml = [
+        'id: module-code',
+        'name: CodeFile',
+        'version: "1.0.0"',
+        'category: module',
+        'description: Skill with code file reference',
+        'instructions: |',
+        '  ### Test',
+        '  Content.',
+        'examples:',
+        '  - title: Demo',
+        '    code_file: examples/demo.php',
+        '    language: php',
+      ].join('\n');
+      await writeFile(path.join(skillDir, 'skill.yaml'), yaml, 'utf8');
+
+      const loaded = await loadSkillFile(path.join(skillDir, 'skill.yaml'));
+
+      expect(loaded.skill.examples?.[0].code).toBe('<?php echo "hello";');
+      expect(loaded.skill.examples?.[0]).not.toHaveProperty('code_file');
+    });
   });
 
   describe('loadAllSkills', () => {
