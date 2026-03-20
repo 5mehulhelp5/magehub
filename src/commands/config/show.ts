@@ -5,9 +5,15 @@ import { renderConfig } from '../../core/renderer.js';
 import { CliError } from '../../utils/cli-error.js';
 
 export async function runConfigShowCommand(rootDir?: string): Promise<void> {
-  const loaded = await loadConfig(rootDir ?? process.cwd()).catch(() => {
-    throw new CliError('Missing or invalid .magehub.yaml. Run `magehub setup:init` first.', 2);
-  });
+  const loaded = await loadConfig(rootDir ?? process.cwd()).catch(
+    (error: unknown) => {
+      const detail = error instanceof Error ? `: ${error.message}` : '';
+      throw new CliError(
+        `Missing or invalid .magehub.yaml${detail}. Run \`magehub setup:init\` first.`,
+        2,
+      );
+    },
+  );
 
   console.log(renderConfig(loaded.config));
 }

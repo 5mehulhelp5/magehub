@@ -12,7 +12,10 @@ export interface RenderGenerateOptions {
   rootDir: string;
 }
 
-function renderSkillSection(skill: Skill, options: Omit<RenderGenerateOptions, 'format' | 'rootDir'>): string {
+function renderSkillSection(
+  skill: Skill,
+  options: Omit<RenderGenerateOptions, 'format' | 'rootDir'>,
+): string {
   const sections: string[] = [];
 
   sections.push(`## ${skill.name} (${skill.id})`);
@@ -55,18 +58,73 @@ function renderSkillSection(skill: Skill, options: Omit<RenderGenerateOptions, '
   return sections.join('\n').trim();
 }
 
+export function renderSkillDetail(skill: Skill): string {
+  const lines: string[] = [];
+
+  lines.push(`${skill.name} (${skill.id}) v${skill.version}`);
+  lines.push(`Category: ${skill.category}`);
+  lines.push(`Description: ${skill.description}`);
+
+  if ((skill.tags?.length ?? 0) > 0) {
+    lines.push(`Tags: ${(skill.tags ?? []).join(', ')}`);
+  }
+
+  if ((skill.magento_versions?.length ?? 0) > 0) {
+    lines.push(`Magento: ${(skill.magento_versions ?? []).join(', ')}`);
+  }
+
+  if ((skill.conventions?.length ?? 0) > 0) {
+    lines.push('', 'Conventions:');
+    for (const convention of skill.conventions ?? []) {
+      lines.push(`  - ${convention.rule}`);
+    }
+  }
+
+  if ((skill.examples?.length ?? 0) > 0) {
+    lines.push('', `Examples (${(skill.examples ?? []).length}):`);
+    for (const example of skill.examples ?? []) {
+      lines.push(`  - ${example.title}`);
+    }
+  }
+
+  if ((skill.anti_patterns?.length ?? 0) > 0) {
+    lines.push('', `Anti-patterns (${(skill.anti_patterns ?? []).length}):`);
+    for (const antiPattern of skill.anti_patterns ?? []) {
+      lines.push(`  - ${antiPattern.pattern}: ${antiPattern.problem}`);
+    }
+  }
+
+  if ((skill.references?.length ?? 0) > 0) {
+    lines.push('', 'References:');
+    for (const reference of skill.references ?? []) {
+      lines.push(`  - ${reference.title}: ${reference.url}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
 export function renderSkillListTable(skills: Skill[]): string {
   const header = 'ID'.padEnd(24) + 'Version'.padEnd(10) + 'Description';
-  const body = skills.map((skill) => skill.id.padEnd(24) + skill.version.padEnd(10) + skill.description);
+  const body = skills.map(
+    (skill) =>
+      skill.id.padEnd(24) + skill.version.padEnd(10) + skill.description,
+  );
   return [header, ...body].join('\n');
 }
 
-export function renderSkillSearchResults(skills: Skill[], keyword: string): string {
+export function renderSkillSearchResults(
+  skills: Skill[],
+  keyword: string,
+): string {
   const lines = [`Search results for "${keyword}":`, ''];
   for (const skill of skills) {
     lines.push(`${skill.id.padEnd(24)}${skill.description}`);
   }
-  lines.push('', `Found ${skills.length} skill${skills.length === 1 ? '' : 's'} matching "${keyword}"`);
+  lines.push(
+    '',
+    `Found ${skills.length} skill${skills.length === 1 ? '' : 's'} matching "${keyword}"`,
+  );
   return lines.join('\n');
 }
 
@@ -74,7 +132,10 @@ export function renderConfig(config: MageHubConfig): string {
   return JSON.stringify(config, null, 2);
 }
 
-function getTemplateContext(skills: Skill[], content: string): Record<string, unknown> {
+function getTemplateContext(
+  skills: Skill[],
+  content: string,
+): Record<string, unknown> {
   return {
     content,
     skills: skills.map((skill) => ({
@@ -88,7 +149,10 @@ function getTemplateContext(skills: Skill[], content: string): Record<string, un
   };
 }
 
-export async function renderGeneratedOutput(skills: Skill[], options: RenderGenerateOptions): Promise<string> {
+export async function renderGeneratedOutput(
+  skills: Skill[],
+  options: RenderGenerateOptions,
+): Promise<string> {
   const templatePath = resolveBundledTemplatePath(options.format);
   const template = await readFile(templatePath, 'utf8');
   const content = skills

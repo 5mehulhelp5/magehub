@@ -19,13 +19,24 @@ export async function runGenerateCommand(
   rootDir?: string,
 ): Promise<void> {
   const effectiveRootDir = rootDir ?? process.cwd();
-  const loaded = await loadConfig(effectiveRootDir).catch(() => {
-    throw new CliError('Missing or invalid .magehub.yaml. Run `magehub setup:init` first.', 2);
+  const loaded = await loadConfig(effectiveRootDir).catch((error: unknown) => {
+    const detail = error instanceof Error ? `: ${error.message}` : '';
+    throw new CliError(
+      `Missing or invalid .magehub.yaml${detail}. Run \`magehub setup:init\` first.`,
+      2,
+    );
   });
   const registry = await createSkillRegistry(effectiveRootDir);
 
-  const format = parseOutputFormat(options.format, loaded.config.format ?? 'claude');
-  const selectedSkillIds = options.skills?.split(',').map((value) => value.trim()).filter(Boolean) ?? loaded.config.skills;
+  const format = parseOutputFormat(
+    options.format,
+    loaded.config.format ?? 'claude',
+  );
+  const selectedSkillIds =
+    options.skills
+      ?.split(',')
+      .map((value) => value.trim())
+      .filter(Boolean) ?? loaded.config.skills;
 
   if (selectedSkillIds.length === 0) {
     throw new CliError('No skills configured for generation.', 1);
@@ -42,16 +53,23 @@ export async function runGenerateCommand(
       skill.compatibility !== undefined &&
       !skill.compatibility.includes(compatibilityFormat)
     ) {
-      throw new CliError(`Skill ${skillId} is not compatible with format ${format}`, 3);
+      throw new CliError(
+        `Skill ${skillId} is not compatible with format ${format}`,
+        3,
+      );
     }
     return skill;
   });
 
-  const outputPath = options.output ?? loaded.config.output ?? resolveOutputPath(effectiveRootDir, format);
+  const outputPath =
+    options.output ??
+    loaded.config.output ??
+    resolveOutputPath(effectiveRootDir, format);
   const output = await renderGeneratedOutput(skills, {
     format,
     includeExamples: options.examples ?? loaded.config.include_examples ?? true,
-    includeAntipatterns: options.antipatterns ?? loaded.config.include_antipatterns ?? true,
+    includeAntipatterns:
+      options.antipatterns ?? loaded.config.include_antipatterns ?? true,
     rootDir: effectiveRootDir,
   });
 

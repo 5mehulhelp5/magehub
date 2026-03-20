@@ -6,13 +6,12 @@ import { info } from '../../utils/logger.js';
 import { CliError } from '../../utils/cli-error.js';
 import { parseSkillCategory } from '../../utils/validation.js';
 
-export async function runSkillListCommand(options: {
-  category?: string;
-  format: string;
-  rootDir?: string;
-}): Promise<void> {
-  const rootDir = options.rootDir ?? process.cwd();
-  const registry = await createSkillRegistry(rootDir);
+export async function runSkillListCommand(
+  options: { category?: string; format: string },
+  rootDir?: string,
+): Promise<void> {
+  const effectiveRootDir = rootDir ?? process.cwd();
+  const registry = await createSkillRegistry(effectiveRootDir);
   const category = parseSkillCategory(options.category);
   const skills = registry.list(category);
 
@@ -26,7 +25,11 @@ export async function runSkillListCommand(options: {
   }
 
   if (skills.length === 0) {
-    info(category === undefined ? 'No skills available.' : `No skills available in category '${category}'.`);
+    info(
+      category === undefined
+        ? 'No skills available.'
+        : `No skills available in category '${category}'.`,
+    );
     return;
   }
 
@@ -41,5 +44,7 @@ export function registerSkillListCommand(program: Command): void {
     .description('List available skills')
     .option('--category <category>', 'Filter by category')
     .option('--format <format>', 'Output format: table or json', 'table')
-    .action(async (options: { category?: string; format: string }) => runSkillListCommand(options));
+    .action(async (options: { category?: string; format: string }) =>
+      runSkillListCommand(options),
+    );
 }

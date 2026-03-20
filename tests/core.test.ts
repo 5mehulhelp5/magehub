@@ -6,7 +6,11 @@ import { readFile } from 'node:fs/promises';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { loadConfig, resolveCustomSkillsPath, validateConfigFile } from '../src/core/config-manager.js';
+import {
+  loadConfig,
+  resolveCustomSkillsPath,
+  validateConfigFile,
+} from '../src/core/config-manager.js';
 import { clearSchemaValidatorCache } from '../src/core/schema-validator.js';
 import { createSkillRegistry } from '../src/core/skill-registry.js';
 import { validateSkillFile } from '../src/core/skill-validator.js';
@@ -25,7 +29,9 @@ async function setupFixtureRepo(): Promise<string> {
   const rootDir = await mkdtemp(path.join(os.tmpdir(), 'magehub-'));
 
   await mkdir(path.join(rootDir, 'schema'), { recursive: true });
-  await mkdir(path.join(rootDir, 'skills', 'module', 'module-plugin'), { recursive: true });
+  await mkdir(path.join(rootDir, 'skills', 'module', 'module-plugin'), {
+    recursive: true,
+  });
   await mkdir(path.join(rootDir, 'templates'), { recursive: true });
 
   await writeFile(
@@ -33,7 +39,14 @@ async function setupFixtureRepo(): Promise<string> {
     JSON.stringify({
       $schema: 'http://json-schema.org/draft-07/schema#',
       type: 'object',
-      required: ['id', 'name', 'version', 'category', 'description', 'instructions'],
+      required: [
+        'id',
+        'name',
+        'version',
+        'category',
+        'description',
+        'instructions',
+      ],
       properties: {
         id: { type: 'string' },
         name: { type: 'string' },
@@ -48,7 +61,10 @@ async function setupFixtureRepo(): Promise<string> {
           items: {
             type: 'object',
             required: ['rule'],
-            properties: { rule: { type: 'string' }, rationale: { type: 'string' } },
+            properties: {
+              rule: { type: 'string' },
+              rationale: { type: 'string' },
+            },
             additionalProperties: false,
           },
         },
@@ -57,7 +73,11 @@ async function setupFixtureRepo(): Promise<string> {
           items: {
             type: 'object',
             required: ['title', 'code'],
-            properties: { title: { type: 'string' }, code: { type: 'string' }, language: { type: 'string' } },
+            properties: {
+              title: { type: 'string' },
+              code: { type: 'string' },
+              language: { type: 'string' },
+            },
             additionalProperties: false,
           },
         },
@@ -66,7 +86,10 @@ async function setupFixtureRepo(): Promise<string> {
           items: {
             type: 'object',
             required: ['pattern', 'problem'],
-            properties: { pattern: { type: 'string' }, problem: { type: 'string' } },
+            properties: {
+              pattern: { type: 'string' },
+              problem: { type: 'string' },
+            },
             additionalProperties: false,
           },
         },
@@ -140,7 +163,9 @@ async function setupFixtureRepo(): Promise<string> {
 
   await writeFile(
     path.join(rootDir, '.magehub.yaml'),
-    ['version: "1"', 'skills:', '  - module-plugin', 'format: claude'].join('\n'),
+    ['version: "1"', 'skills:', '  - module-plugin', 'format: claude'].join(
+      '\n',
+    ),
     'utf8',
   );
 
@@ -178,7 +203,9 @@ describe('core services and commands', () => {
     const loaded = await loadConfig(rootDir);
     loaded.config.custom_skills_path = './custom-skills';
 
-    expect(resolveCustomSkillsPath(rootDir, loaded.config)).toBe(path.join(rootDir, 'custom-skills'));
+    expect(resolveCustomSkillsPath(rootDir, loaded.config)).toBe(
+      path.join(rootDir, 'custom-skills'),
+    );
   });
 
   it('rejects custom skills paths outside the project root', async () => {
@@ -201,7 +228,6 @@ describe('core services and commands', () => {
   it('validates skill files and reports no warnings for ### headings', async () => {
     const result = await validateSkillFile(
       path.join(rootDir, 'skills', 'module', 'module-plugin', 'skill.yaml'),
-      rootDir,
     );
 
     expect(result.valid).toBe(true);
@@ -209,18 +235,24 @@ describe('core services and commands', () => {
   });
 
   it('runs skill:list against the registry', async () => {
-    await runSkillListCommand({ format: 'table', rootDir });
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('module-plugin'));
+    await runSkillListCommand({ format: 'table' }, rootDir);
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining('module-plugin'),
+    );
   });
 
   it('runs skill:show against the registry', async () => {
     await runSkillShowCommand('module-plugin', rootDir);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('module-plugin v1.0.0'));
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Plugin Development (module-plugin) v1.0.0'),
+    );
   });
 
   it('runs skill:search against the registry', async () => {
     await runSkillSearchCommand('plugin', {}, rootDir);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Search results for "plugin"'));
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Search results for "plugin"'),
+    );
   });
 
   it('runs skill:verify for installed skills', async () => {
@@ -230,7 +262,9 @@ describe('core services and commands', () => {
 
   it('runs config:validate successfully', async () => {
     await runConfigValidateCommand(rootDir);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('.magehub.yaml is valid'));
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining('.magehub.yaml is valid'),
+    );
   });
 
   it('runs config:show successfully', async () => {
@@ -247,7 +281,9 @@ describe('core services and commands', () => {
   });
 
   it('rejects removing skills that are not installed', async () => {
-    await expect(runSkillRemoveCommand(['missing-skill'], rootDir)).rejects.toThrow('Skills not installed');
+    await expect(
+      runSkillRemoveCommand(['missing-skill'], rootDir),
+    ).rejects.toThrow('Skills not installed');
   });
 
   it('generates output from config and templates', async () => {
@@ -281,12 +317,92 @@ describe('core services and commands', () => {
     );
 
     await runSetupInitCommand({ format: 'claude' }, otherRoot);
-    const content = await readFile(path.join(otherRoot, '.magehub.yaml'), 'utf8');
+    const content = await readFile(
+      path.join(otherRoot, '.magehub.yaml'),
+      'utf8',
+    );
     expect(content).toContain('version: "1"');
   });
 
-  it('rejects unsupported output formats during generation setup', async () => {
-    await expect(runSetupInitCommand({ format: 'bad-format' }, rootDir)).rejects.toThrow('already exists');
-    await expect(runGenerateCommand({ format: 'bad-format' }, rootDir)).rejects.toThrow('Unsupported output format');
+  it('creates .gitignore with output path during setup:init', async () => {
+    const initRoot = await mkdtemp(path.join(os.tmpdir(), 'magehub-gi-'));
+    await mkdir(path.join(initRoot, 'schema'), { recursive: true });
+    await writeFile(
+      path.join(initRoot, 'schema', 'config.schema.json'),
+      JSON.stringify({
+        $schema: 'http://json-schema.org/draft-07/schema#',
+        type: 'object',
+        required: ['version', 'skills'],
+        properties: {
+          version: { type: 'string' },
+          skills: { type: 'array', items: { type: 'string' } },
+          format: { type: 'string' },
+        },
+        additionalProperties: false,
+      }),
+      'utf8',
+    );
+
+    await runSetupInitCommand({ format: 'claude' }, initRoot);
+    const gitignore = await readFile(path.join(initRoot, '.gitignore'), 'utf8');
+    expect(gitignore).toContain('CLAUDE.md');
+    expect(gitignore).toContain('# MageHub generated output');
+  });
+
+  it('skips .gitignore when --no-gitignore is used', async () => {
+    const initRoot = await mkdtemp(path.join(os.tmpdir(), 'magehub-nogi-'));
+    await mkdir(path.join(initRoot, 'schema'), { recursive: true });
+    await writeFile(
+      path.join(initRoot, 'schema', 'config.schema.json'),
+      JSON.stringify({
+        $schema: 'http://json-schema.org/draft-07/schema#',
+        type: 'object',
+        required: ['version', 'skills'],
+        properties: {
+          version: { type: 'string' },
+          skills: { type: 'array', items: { type: 'string' } },
+          format: { type: 'string' },
+        },
+        additionalProperties: false,
+      }),
+      'utf8',
+    );
+
+    await runSetupInitCommand({ format: 'claude', gitignore: false }, initRoot);
+    const gitignoreExists = await readFile(
+      path.join(initRoot, '.gitignore'),
+      'utf8',
+    ).catch(() => null);
+    expect(gitignoreExists).toBeNull();
+  });
+
+  it('rejects unsupported output formats during init', async () => {
+    const freshRoot = await mkdtemp(path.join(os.tmpdir(), 'magehub-fmt-'));
+    await mkdir(path.join(freshRoot, 'schema'), { recursive: true });
+    await writeFile(
+      path.join(freshRoot, 'schema', 'config.schema.json'),
+      JSON.stringify({
+        $schema: 'http://json-schema.org/draft-07/schema#',
+        type: 'object',
+        required: ['version', 'skills'],
+        properties: {
+          version: { type: 'string' },
+          skills: { type: 'array', items: { type: 'string' } },
+          format: { type: 'string' },
+        },
+        additionalProperties: false,
+      }),
+      'utf8',
+    );
+
+    await expect(
+      runSetupInitCommand({ format: 'bad-format' }, freshRoot),
+    ).rejects.toThrow('Unsupported output format');
+  });
+
+  it('rejects unsupported output formats during generation', async () => {
+    await expect(
+      runGenerateCommand({ format: 'bad-format' }, rootDir),
+    ).rejects.toThrow('Unsupported output format');
   });
 });
