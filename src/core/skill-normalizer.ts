@@ -42,11 +42,17 @@ export async function normalizeRawSkill(
       : undefined;
 
   const {
-    instructions: _instructions,
-    instructions_file: _instructionsFile,
-    examples: _examples,
+    instructions_file: _fileRef,
+    instructions: _inline,
+    examples: _rawExamples,
     ...metadata
   } = raw;
+
+  // Prefix variables are used solely to exclude keys from the spread.
+  // The void expressions satisfy the no-unused-vars lint rule.
+  void _fileRef;
+  void _inline;
+  void _rawExamples;
 
   return {
     ...metadata,
