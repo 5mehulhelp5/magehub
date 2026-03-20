@@ -15,51 +15,7 @@ tags:
 magento_versions:
   - '2.4.x'
 
-instructions: |
-  ### Declarative Schema Overview
-
-  Magento 2.3+ uses declarative schema (`etc/db_schema.xml`) to define database
-  table structures instead of legacy InstallSchema/UpgradeSchema scripts. The
-  framework compares the declared state against the current database state and
-  generates the necessary ALTER/CREATE statements automatically. This is the
-  only supported approach for new modules.
-
-  ### db_schema.xml Structure
-
-  Define tables, columns, constraints, and indexes in `etc/db_schema.xml`. Each
-  column requires `name`, `xsi:type`, and `nullable` attributes at minimum.
-  Primary keys use `<constraint>` with `referenceId="PRIMARY"`. Foreign keys
-  reference the parent table and column, and Magento enforces referential
-  integrity at the database level.
-
-  ### Schema Whitelist
-
-  After modifying `db_schema.xml`, run
-  `bin/magento setup:db-declaration:generate-whitelist --module-name=Vendor_Module`
-  to update `etc/db_schema_whitelist.json`. The whitelist tracks which schema
-  elements your module owns so that `setup:upgrade` can safely drop columns and
-  tables during uninstallation. Never edit the whitelist manually.
-
-  ### Data Patches
-
-  Use `DataPatchInterface` classes in `Setup/Patch/Data/` for inserting or
-  modifying data — configuration values, attribute creation, seed data. Data
-  patches run once and are tracked in the `patch_list` table. Make every patch
-  idempotent because `setup:upgrade` may execute patches in any order relative
-  to other modules.
-
-  ### Schema Patches
-
-  Use `SchemaPatchInterface` in `Setup/Patch/Schema/` for DDL operations that
-  cannot be expressed in declarative schema — triggers, stored procedures, or
-  complex index operations. Schema patches are rare; prefer declarative schema
-  for standard table changes.
-
-  ### Patch Dependencies and Aliases
-
-  Implement `getDependencies()` to declare ordering between patches within the
-  same module. Return `getAliases()` with the old class name when renaming a
-  patch to prevent re-execution.
+instructions_file: instructions.md
 
 conventions:
   - rule: 'Define all table structures in db_schema.xml — never use InstallSchema or UpgradeSchema'
@@ -78,119 +34,17 @@ examples:
   - title: 'db_schema.xml table definition'
     description: 'Complete declarative schema defining a custom entity table with primary key, columns, index, and foreign key constraint'
     language: xml
-    code: |
-      <?xml version="1.0"?>
-      <schema xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-              xsi:noNamespaceSchemaLocation="urn:magento:framework:Setup/Declaration/Schema/etc/schema.xsd">
-          <table name="vendor_module_entity" resource="default" engine="innodb"
-                 comment="Vendor Module Entity Table">
-              <column xsi:type="int" name="entity_id" unsigned="true" nullable="false"
-                      identity="true" comment="Entity ID"/>
-              <column xsi:type="varchar" name="name" nullable="false" length="255"
-                      comment="Entity Name"/>
-              <column xsi:type="smallint" name="store_id" unsigned="true" nullable="false"
-                      default="0" comment="Store ID"/>
-              <column xsi:type="timestamp" name="created_at" nullable="false"
-                      default="CURRENT_TIMESTAMP" comment="Created At"/>
-              <constraint xsi:type="primary" referenceId="PRIMARY">
-                  <column name="entity_id"/>
-              </constraint>
-              <index referenceId="VENDOR_MODULE_ENTITY_STORE_ID" indexType="btree">
-                  <column name="store_id"/>
-              </index>
-              <constraint xsi:type="foreign" referenceId="VENDOR_MODULE_ENTITY_STORE_ID_STORE_STORE_ID"
-                          table="vendor_module_entity" column="store_id"
-                          referenceTable="store" referenceColumn="store_id"
-                          onDelete="CASCADE"/>
-          </table>
-      </schema>
+    code_file: examples/db-schema-xml-table-definition.xml
 
   - title: 'Data patch with idempotent checks'
     description: 'Data patch that adds a product attribute, checking for existence before creation to ensure safe re-execution'
     language: php
-    code: |
-      <?php
-      declare(strict_types=1);
-
-      namespace Vendor\Module\Setup\Patch\Data;
-
-      use Magento\Eav\Setup\EavSetup;
-      use Magento\Eav\Setup\EavSetupFactory;
-      use Magento\Framework\Setup\ModuleDataSetupInterface;
-      use Magento\Framework\Setup\Patch\DataPatchInterface;
-
-      class AddCustomProductAttribute implements DataPatchInterface
-      {
-          public function __construct(
-              private readonly ModuleDataSetupInterface $moduleDataSetup,
-              private readonly EavSetupFactory $eavSetupFactory
-          ) {
-          }
-
-          public function apply(): self
-          {
-              /** @var EavSetup $eavSetup */
-              $eavSetup = $this->eavSetupFactory->create(['setup' => $this->moduleDataSetup]);
-
-              // Idempotent: skip if attribute already exists
-              if ($eavSetup->getAttributeId(\Magento\Catalog\Model\Product::ENTITY, 'custom_flag')) {
-                  return $this;
-              }
-
-              $eavSetup->addAttribute(
-                  \Magento\Catalog\Model\Product::ENTITY,
-                  'custom_flag',
-                  [
-                      'type' => 'int',
-                      'label' => 'Custom Flag',
-                      'input' => 'boolean',
-                      'source' => \Magento\Eav\Model\Entity\Attribute\Source\Boolean::class,
-                      'required' => false,
-                      'default' => '0',
-                      'global' => \Magento\Eav\Model\Entity\Attribute\ScopedAttributeInterface::SCOPE_STORE,
-                      'visible' => true,
-                      'searchable' => false,
-                      'filterable' => false,
-                      'comparable' => false,
-                      'used_in_product_listing' => false,
-                  ]
-              );
-
-              return $this;
-          }
-
-          public static function getDependencies(): array
-          {
-              return [];
-          }
-
-          public function getAliases(): array
-          {
-              return [];
-          }
-      }
+    code_file: examples/data-patch-with-idempotent-checks.php
 
   - title: 'db_schema_whitelist.json'
     description: 'Auto-generated whitelist file that tracks module-owned schema elements for safe uninstallation'
     language: json
-    code: |
-      {
-          "vendor_module_entity": {
-              "column": {
-                  "entity_id": true,
-                  "name": true,
-                  "store_id": true,
-                  "created_at": true
-              },
-              "index": {
-                  "VENDOR_MODULE_ENTITY_STORE_ID": true
-              },
-              "constraint": {
-                  "PRIMARY": true,
-                  "VENDOR_MODULE_ENTITY_STORE_ID_STORE_STORE_ID": true
-              }
-          }
-      }
+    code_file: examples/db-schema-whitelist.json
 
 anti_patterns:
   - pattern: 'Using InstallSchema or UpgradeSchema classes in new modules'

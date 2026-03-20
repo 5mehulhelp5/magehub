@@ -1,0 +1,17 @@
+{
+  "vendor_module_entity": {
+    "column": {
+      "entity_id": true,
+      "name": true,
+      "store_id": true,
+      "created_at": true
+    },
+    "index": {
+      "VENDOR_MODULE_ENTITY_STORE_ID": true
+    },
+    "constraint": {
+      "PRIMARY": true,
+      "VENDOR_MODULE_ENTITY_STORE_ID_STORE_STORE_ID": true
+    }
+  }
+}

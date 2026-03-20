@@ -17,30 +17,7 @@ magento_versions:
 
 dependencies: []
 
-instructions: |
-  ### Magento 2 Plugin Development Guide
-
-  Plugins (interceptors) allow you to modify the behavior of public methods
-  without changing the original class. This is a core Magento 2 extension mechanism.
-
-  ### When to Use Plugins
-
-  Use plugins when you need to:
-  - Modify input parameters before method execution (before plugin)
-  - Modify return values after method execution (after plugin)
-  - Completely wrap method execution (around plugin)
-
-  ### Plugin Types
-
-  1. **Before Plugin** - Modifies input parameters
-  2. **After Plugin** - Modifies return value
-  3. **Around Plugin** - Wraps entire method (use sparingly)
-
-  ### Implementation Steps
-
-  1. Create plugin class in `Plugin/` directory
-  2. Declare plugin in `etc/di.xml`
-  3. Implement appropriate plugin method(s)
+instructions_file: instructions.md
 
 conventions:
   - rule: 'Plugin class naming: {TargetClassShortName}{PluginPurpose}Plugin'
@@ -59,54 +36,17 @@ examples:
   - title: 'Before Plugin'
     description: 'Modify product name before saving'
     language: php
-    code: |
-      <?php
-      declare(strict_types=1);
-
-      namespace Vendor\Module\Plugin;
-
-      use Magento\Catalog\Model\Product;
-
-      class ProductNameNormalizerPlugin
-      {
-          public function beforeSetName(Product $subject, string $name): array
-          {
-              return [trim(strtoupper($name))];
-          }
-      }
+    code_file: examples/before-plugin.php
 
   - title: 'After Plugin'
     description: 'Append suffix to product name'
     language: php
-    code: |
-      <?php
-      declare(strict_types=1);
-
-      namespace Vendor\Module\Plugin;
-
-      use Magento\Catalog\Model\Product;
-
-      class ProductNameSuffixPlugin
-      {
-          public function afterGetName(Product $subject, string $result): string
-          {
-              return $result . ' - On Sale';
-          }
-      }
+    code_file: examples/after-plugin.php
 
   - title: 'di.xml Configuration'
     description: 'Plugin declaration'
     language: xml
-    code: |
-      <?xml version="1.0"?>
-      <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-              xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
-          <type name="Magento\Catalog\Model\Product">
-              <plugin name="vendor_module_product_name_normalizer"
-                      type="Vendor\Module\Plugin\ProductNameNormalizerPlugin"
-                      sortOrder="10"/>
-          </type>
-      </config>
+    code_file: examples/di-xml-configuration.xml
 
 anti_patterns:
   - pattern: 'Using around plugin when before/after would suffice'
