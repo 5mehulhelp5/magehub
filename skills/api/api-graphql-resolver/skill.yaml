@@ -1,47 +1,278 @@
 id: api-graphql-resolver
 name: GraphQL Resolver
-version: "1.0.0"
+version: '1.0.0'
 category: api
-description: Implement Magento 2 GraphQL resolvers and schema mappings
+description: Implement Magento 2 GraphQL resolvers — define schema.graphqls types, write query and mutation resolvers, and handle authorization
 
 tags:
   - graphql
   - resolver
   - api
+  - schema
+  - mutation
+  - query
 
 magento_versions:
-  - "2.4.x"
+  - '2.4.x'
 
 instructions: |
-  ### GraphQL Resolver Flow
+  ### Magento 2 GraphQL Architecture
 
-  Define schema fields in `etc/schema.graphqls` and connect them to resolver classes.
+  Magento's GraphQL layer maps schema fields to PHP resolver classes. The
+  framework merges all `etc/schema.graphqls` files from enabled modules into a
+  single schema, then dispatches incoming queries to the resolver class specified
+  in the `@resolver` directive.
 
-  ### Resolver Expectations
+  ### Schema Definition
 
-  - Implement Magento resolver interfaces correctly
-  - Validate required arguments early
-  - Keep business logic in services, not directly in the resolver
+  Define types, queries, and mutations in `etc/schema.graphqls`. Extend existing
+  Magento types using `extend type Query` or `extend type Mutation`. Use
+  `@resolver(class:)` to bind each field to a PHP class. Input types group
+  mutation arguments into a single typed object for cleaner signatures.
+
+  ### Query Resolvers
+
+  Implement `Magento\Framework\GraphQl\Query\ResolverInterface` for query
+  fields. The `resolve()` method receives the field, context, resolution info,
+  and arguments. Return an associative array matching the declared GraphQL type
+  fields. Keep business logic in service classes — resolvers should only
+  translate between GraphQL arguments and service method calls.
+
+  ### Mutation Resolvers
+
+  Mutation resolvers follow the same interface but perform write operations.
+  Validate input arguments early and throw `GraphQlInputException` for user
+  errors. Wrap the service call and return the created or modified entity data
+  as an associative array matching the mutation return type.
+
+  ### Authorization
+
+  Check `$context->getExtensionAttributes()->getIsCustomer()` for customer-only
+  fields. Throw `GraphQlAuthorizationException` when access is denied. For
+  admin-only fields, use bearer token authentication and verify the admin
+  context.
+
+  ### Error Handling
+
+  Use `GraphQlInputException` for validation errors, `GraphQlNoSuchEntityException`
+  for missing resources, and `GraphQlAuthorizationException` for permission
+  failures. These exception types produce structured GraphQL error responses
+  with appropriate HTTP status codes.
 
 conventions:
-  - rule: Keep resolvers thin and delegate domain logic to service classes
-    rationale: Improves testability and avoids bloated transport-layer classes
+  - rule: 'Keep resolvers thin — delegate all business logic to service or repository classes'
+    example: "Resolver calls $this->productRepository->getById($args['id']) and returns the result array"
+    rationale: 'Thin resolvers are easier to test, reuse across REST and GraphQL, and maintain separation between transport layer and domain logic.'
+
+  - rule: 'Validate all required arguments at the start of resolve() and throw GraphQlInputException for invalid input'
+    example: "if (empty($args['input']['name'])) { throw new GraphQlInputException(__('Name is required')); }"
+    rationale: 'Early validation provides clear error messages to API consumers and prevents partial operations that leave data in an inconsistent state.'
+
+  - rule: 'Return associative arrays from resolvers matching the declared GraphQL type fields exactly'
+    example: "return ['id' => $entity->getId(), 'name' => $entity->getName(), 'created_at' => $entity->getCreatedAt()];"
+    rationale: "Magento's GraphQL framework maps array keys to type fields. Missing keys cause null responses; extra keys are silently ignored. Matching the schema prevents subtle data omission bugs."
 
 examples:
-  - title: Query field resolver
+  - title: 'schema.graphqls with query and mutation'
+    description: 'GraphQL schema defining a custom type, a query field with resolver binding, and a mutation with input type'
     language: graphql
     code: |
       type Query {
-          customThing(id: Int!): CustomThing @resolver(class: "Vendor\\Module\\Model\\Resolver\\CustomThing")
+          customEntity(id: Int! @doc(description: "Entity ID")): CustomEntity
+              @resolver(class: "Vendor\\Module\\Model\\Resolver\\CustomEntity")
+              @doc(description: "Retrieve a custom entity by ID")
+      }
+
+      type Mutation {
+          createCustomEntity(input: CustomEntityInput!): CustomEntity
+              @resolver(class: "Vendor\\Module\\Model\\Resolver\\CreateCustomEntity")
+              @doc(description: "Create a new custom entity")
+      }
+
+      type CustomEntity @doc(description: "Custom entity type") {
+          id: Int @doc(description: "Entity ID")
+          name: String @doc(description: "Entity name")
+          is_active: Boolean @doc(description: "Active status")
+          created_at: String @doc(description: "Creation timestamp")
+      }
+
+      input CustomEntityInput @doc(description: "Input for creating a custom entity") {
+          name: String! @doc(description: "Entity name")
+          is_active: Boolean @doc(description: "Active status, defaults to true")
+      }
+
+  - title: 'Query resolver implementation'
+    description: 'Resolver class that fetches a single entity by ID, delegates to a repository, and returns the typed result array'
+    language: php
+    code: |
+      <?php
+      declare(strict_types=1);
+
+      namespace Vendor\Module\Model\Resolver;
+
+      use Magento\Framework\Exception\NoSuchEntityException;
+      use Magento\Framework\GraphQl\Config\Element\Field;
+      use Magento\Framework\GraphQl\Exception\GraphQlInputException;
+      use Magento\Framework\GraphQl\Exception\GraphQlNoSuchEntityException;
+      use Magento\Framework\GraphQl\Query\ResolverInterface;
+      use Magento\Framework\GraphQl\Schema\Type\ResolveInfo;
+      use Vendor\Module\Api\EntityRepositoryInterface;
+
+      class CustomEntity implements ResolverInterface
+      {
+          public function __construct(
+              private readonly EntityRepositoryInterface $entityRepository
+          ) {
+          }
+
+          public function resolve(
+              Field $field,
+              $context,
+              ResolveInfo $info,
+              ?array $value = null,
+              ?array $args = null
+          ): array {
+              if (!isset($args['id'])) {
+                  throw new GraphQlInputException(__('Entity ID is required.'));
+              }
+
+              try {
+                  $entity = $this->entityRepository->getById((int) $args['id']);
+              } catch (NoSuchEntityException $e) {
+                  throw new GraphQlNoSuchEntityException(
+                      __('Entity with ID "%1" does not exist.', $args['id'])
+                  );
+              }
+
+              return [
+                  'id' => (int) $entity->getId(),
+                  'name' => $entity->getName(),
+                  'is_active' => (bool) $entity->getIsActive(),
+                  'created_at' => $entity->getCreatedAt(),
+              ];
+          }
+      }
+
+  - title: 'Mutation resolver with input validation'
+    description: 'Resolver that validates input, delegates entity creation to a service class, and returns the new entity data'
+    language: php
+    code: |
+      <?php
+      declare(strict_types=1);
+
+      namespace Vendor\Module\Model\Resolver;
+
+      use Magento\Framework\GraphQl\Config\Element\Field;
+      use Magento\Framework\GraphQl\Exception\GraphQlInputException;
+      use Magento\Framework\GraphQl\Query\ResolverInterface;
+      use Magento\Framework\GraphQl\Schema\Type\ResolveInfo;
+      use Vendor\Module\Api\EntityRepositoryInterface;
+      use Vendor\Module\Api\Data\EntityInterfaceFactory;
+
+      class CreateCustomEntity implements ResolverInterface
+      {
+          public function __construct(
+              private readonly EntityRepositoryInterface $entityRepository,
+              private readonly EntityInterfaceFactory $entityFactory
+          ) {
+          }
+
+          public function resolve(
+              Field $field,
+              $context,
+              ResolveInfo $info,
+              ?array $value = null,
+              ?array $args = null
+          ): array {
+              $input = $args['input'] ?? [];
+
+              if (empty($input['name'])) {
+                  throw new GraphQlInputException(__('Name is required.'));
+              }
+
+              $entity = $this->entityFactory->create();
+              $entity->setName($input['name']);
+              $entity->setIsActive($input['is_active'] ?? true);
+
+              $saved = $this->entityRepository->save($entity);
+
+              return [
+                  'id' => (int) $saved->getId(),
+                  'name' => $saved->getName(),
+                  'is_active' => (bool) $saved->getIsActive(),
+                  'created_at' => $saved->getCreatedAt(),
+              ];
+          }
       }
 
 anti_patterns:
-  - pattern: Embedding repository and formatting logic directly in the resolver method
-    problem: Makes resolvers hard to test and reuse
+  - pattern: 'Embedding repository calls, data formatting, and business rules directly in the resolver'
+    problem: 'Fat resolvers become untestable and cannot share logic with REST endpoints. Changes to business rules require modifying the transport layer, increasing the risk of regressions in API behavior.'
+    solution: 'Extract business logic into service classes injected via the constructor. The resolver should only translate between GraphQL arguments and service method parameters.'
+
+  - pattern: 'Returning raw model objects instead of typed arrays from resolve()'
+    problem: "Magento's GraphQL framework expects associative arrays keyed by the GraphQL type field names. Returning model objects causes null values for all fields because the framework cannot map object properties to the schema."
+    solution: |
+      Always return an associative array matching the schema:
+      return [
+          'id' => (int) $entity->getId(),
+          'name' => $entity->getName(),
+      ];
+
+  - pattern: 'Missing authorization checks in resolvers that handle customer or admin data'
+    problem: 'Without explicit authorization checks, guest users can access customer data and unauthenticated requests can trigger admin operations. GraphQL introspection reveals the available fields, making unprotected resolvers easy to exploit.'
+    solution: |
+      Check authentication context at the start of resolve():
+      if (false === $context->getExtensionAttributes()->getIsCustomer()) {
+          throw new GraphQlAuthorizationException(__('Customer login required.'));
+      }
+
+files:
+  - path: 'etc/schema.graphqls'
+    description: 'GraphQL schema defining custom types, query fields, and mutations with resolver bindings'
+    template: |
+      type Query {
+          {{entityName}}(id: Int! @doc(description: "Entity ID")): {{typeName}}
+              @resolver(class: "{{vendor}}\\{{module}}\\Model\\Resolver\\{{typeName}}")
+              @doc(description: "Retrieve {{entityName}} by ID")
+      }
+
+      type {{typeName}} @doc(description: "{{typeName}} entity type") {
+          id: Int @doc(description: "Entity ID")
+          name: String @doc(description: "Entity name")
+      }
+
+  - path: 'Model/Resolver/{{typeName}}.php'
+    description: 'Query resolver class implementing ResolverInterface'
+    template: |
+      <?php
+      declare(strict_types=1);
+
+      namespace {{vendor}}\{{module}}\Model\Resolver;
+
+      use Magento\Framework\GraphQl\Config\Element\Field;
+      use Magento\Framework\GraphQl\Query\ResolverInterface;
+      use Magento\Framework\GraphQl\Schema\Type\ResolveInfo;
+
+      class {{typeName}} implements ResolverInterface
+      {
+          public function resolve(
+              Field $field,
+              $context,
+              ResolveInfo $info,
+              ?array $value = null,
+              ?array $args = null
+          ): array {
+              // Delegate to service class and return typed array
+              return [];
+          }
+      }
 
 references:
-  - title: Adobe Commerce GraphQL development
-    url: https://developer.adobe.com/commerce/webapi/graphql/develop/
+  - title: 'Adobe Commerce: GraphQL development'
+    url: 'https://developer.adobe.com/commerce/webapi/graphql/develop/'
+  - title: 'Adobe Commerce: Define the GraphQL schema'
+    url: 'https://developer.adobe.com/commerce/webapi/graphql/develop/create-graphqls-file/'
 
 compatibility:
   - claude

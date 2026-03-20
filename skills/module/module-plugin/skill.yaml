@@ -1,47 +1,161 @@
 id: module-plugin
 name: Plugin Development
-version: "1.0.0"
+version: '1.0.0'
 category: module
-description: Implement Magento 2 plugins following best practices
+description: Implement Magento 2 plugins (interceptors) following best practices for before, after, and around method interception
 
 tags:
   - plugin
   - interceptor
   - di
+  - around
+  - before
+  - after
 
 magento_versions:
-  - "2.4.x"
+  - '2.4.x'
+
+dependencies: []
 
 instructions: |
-  ### Plugin Development
+  ### Magento 2 Plugin Development Guide
 
-  Use before, after, and around plugins carefully.
+  Plugins (interceptors) allow you to modify the behavior of public methods
+  without changing the original class. This is a core Magento 2 extension mechanism.
 
-  ### Implementation Notes
+  ### When to Use Plugins
 
-  - Declare plugins in `etc/di.xml`
-  - Prefer before/after over around when possible
+  Use plugins when you need to:
+  - Modify input parameters before method execution (before plugin)
+  - Modify return values after method execution (after plugin)
+  - Completely wrap method execution (around plugin)
+
+  ### Plugin Types
+
+  1. **Before Plugin** - Modifies input parameters
+  2. **After Plugin** - Modifies return value
+  3. **Around Plugin** - Wraps entire method (use sparingly)
+
+  ### Implementation Steps
+
+  1. Create plugin class in `Plugin/` directory
+  2. Declare plugin in `etc/di.xml`
+  3. Implement appropriate plugin method(s)
 
 conventions:
-  - rule: Prefer before/after plugins over around plugins
-    rationale: Around plugins are harder to maintain and easier to misuse
+  - rule: 'Plugin class naming: {TargetClassShortName}{PluginPurpose}Plugin'
+    example: 'ProductPriceModifierPlugin'
+    rationale: 'Clear identification of what the plugin targets and does'
+
+  - rule: 'Prefer before/after plugins over around plugins'
+    example: 'Use afterGetPrice() instead of aroundGetPrice() when only modifying return value'
+    rationale: 'Around plugins break the plugin chain if not implemented correctly'
+
+  - rule: 'Always include type hints for all parameters'
+    example: 'public function beforeSetName(Product $subject, string $name): array'
+    rationale: 'Type safety and IDE autocompletion'
 
 examples:
-  - title: Basic plugin declaration
+  - title: 'Before Plugin'
+    description: 'Modify product name before saving'
+    language: php
+    code: |
+      <?php
+      declare(strict_types=1);
+
+      namespace Vendor\Module\Plugin;
+
+      use Magento\Catalog\Model\Product;
+
+      class ProductNameNormalizerPlugin
+      {
+          public function beforeSetName(Product $subject, string $name): array
+          {
+              return [trim(strtoupper($name))];
+          }
+      }
+
+  - title: 'After Plugin'
+    description: 'Append suffix to product name'
+    language: php
+    code: |
+      <?php
+      declare(strict_types=1);
+
+      namespace Vendor\Module\Plugin;
+
+      use Magento\Catalog\Model\Product;
+
+      class ProductNameSuffixPlugin
+      {
+          public function afterGetName(Product $subject, string $result): string
+          {
+              return $result . ' - On Sale';
+          }
+      }
+
+  - title: 'di.xml Configuration'
+    description: 'Plugin declaration'
     language: xml
     code: |
-      <type name="Magento\Catalog\Model\Product">
-          <plugin name="vendor_module_product_plugin"
-                  type="Vendor\Module\Plugin\ProductPlugin"/>
-      </type>
+      <?xml version="1.0"?>
+      <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+          <type name="Magento\Catalog\Model\Product">
+              <plugin name="vendor_module_product_name_normalizer"
+                      type="Vendor\Module\Plugin\ProductNameNormalizerPlugin"
+                      sortOrder="10"/>
+          </type>
+      </config>
 
 anti_patterns:
-  - pattern: Plugin on __construct
-    problem: Magento does not support constructor plugins
+  - pattern: 'Using around plugin when before/after would suffice'
+    problem: 'Around plugins are harder to debug and can break plugin chain'
+    solution: 'Only use around when you need to conditionally skip method execution'
+
+  - pattern: 'Plugin on __construct method'
+    problem: 'Constructor plugins are not supported'
+    solution: 'Use preference or composition instead'
+
+  - pattern: 'Plugin on private/protected methods'
+    problem: 'Only public methods can be intercepted'
+    solution: 'Consider preference if you must modify non-public methods'
+
+files:
+  - path: 'Plugin/{ClassName}Plugin.php'
+    description: 'Plugin class file'
+    template: |
+      <?php
+      declare(strict_types=1);
+
+      namespace {{vendor}}\{{module}}\Plugin;
+
+      class {{className}}Plugin
+      {
+          public function before{{method}}($subject, ...$args): array
+          {
+              return [...$args];
+          }
+      }
+
+  - path: 'etc/di.xml'
+    description: 'Plugin declaration'
+    template: |
+      <?xml version="1.0"?>
+      <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+          <type name="{{targetClass}}">
+              <plugin name="{{pluginName}}"
+                      type="{{vendor}}\{{module}}\Plugin\{{className}}Plugin"
+                      sortOrder="10"/>
+          </type>
+      </config>
 
 references:
-  - title: Adobe Commerce Plugins
-    url: https://developer.adobe.com/commerce/php/development/components/plugins/
+  - title: 'Magento DevDocs: Plugins'
+    url: 'https://developer.adobe.com/commerce/php/development/components/plugins/'
+  - title: 'Plugin Best Practices'
+    url: 'https://developer.adobe.com/commerce/php/best-practices/extensions/plugins/'
 
 compatibility:
   - claude

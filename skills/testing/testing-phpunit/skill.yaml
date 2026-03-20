@@ -1,50 +1,274 @@
 id: testing-phpunit
 name: PHPUnit Unit Tests
-version: "1.0.0"
+version: '1.0.0'
 category: testing
-description: Write PHPUnit-based unit tests for Magento 2 services and models
+description: Write PHPUnit-based unit tests for Magento 2 — setUp with mocks, assertion patterns, data providers, and exception testing without framework bootstrap
 
 tags:
   - phpunit
   - unit-test
   - testing
+  - mocking
+  - data-provider
+  - assertions
 
 magento_versions:
-  - "2.4.x"
+  - '2.4.x'
 
 instructions: |
-  ### PHPUnit Strategy
+  ### Magento 2 Unit Test Strategy
 
-  Write focused unit tests around business logic with mocked direct dependencies.
+  Unit tests validate individual classes in isolation without the Magento
+  framework, database, or object manager. They run in milliseconds and catch
+  logic errors immediately. Place test classes in `Test/Unit/` mirroring the
+  production namespace.
 
-  ### Test Structure
+  ### Test Class Setup
 
-  - Mirror the production namespace under `Test/Unit`
-  - Use PHPUnit mocks for direct collaborators
-  - Keep Magento framework bootstrapping out of unit tests
+  Extend `PHPUnit\Framework\TestCase`. Create mocks for all constructor
+  dependencies in `setUp()` and instantiate the subject under test with those
+  mocks. Use `createMock()` for interface dependencies and `createPartialMock()`
+  only when testing a class that needs real method behavior alongside stubs.
+
+  ### Mock Configuration
+
+  Configure mock return values with `method()->willReturn()`. Use
+  `expects($this->once())` to verify interaction count when the test's purpose
+  is to confirm a collaborator is called. Avoid over-specifying mock
+  expectations — assert outcomes (return values, state changes) rather than
+  implementation details where possible.
+
+  ### Data Providers
+
+  Use `@dataProvider` to run the same test logic against multiple input/output
+  combinations. Data provider methods are public, return an array of arrays,
+  and are named to describe the data set. Data providers reduce test
+  duplication and make edge case coverage explicit.
+
+  ### Exception Testing
+
+  Call `$this->expectException(ExceptionClass::class)` before the code that
+  should throw. Optionally use `expectExceptionMessage()` to verify the error
+  text. For Magento-specific exceptions like `NoSuchEntityException` or
+  `CouldNotSaveException`, import the full class and test both the exception
+  type and its message.
+
+  ### Avoiding Framework Bootstrap
+
+  Never use `Magento\TestFramework\Helper\Bootstrap` or `ObjectManager` in
+  unit tests. These belong to integration tests. If a class cannot be
+  instantiated without the full framework, it has too many hard dependencies
+  — refactor to inject interfaces that can be mocked.
 
 conventions:
-  - rule: Mock only direct dependencies of the class under test
-    rationale: Reduces brittle tests and keeps the test focused on behavior
+  - rule: 'Mock only direct constructor dependencies of the class under test'
+    example: 'createMock(ProductRepositoryInterface::class) for a service that injects ProductRepositoryInterface'
+    rationale: "Mocking indirect dependencies (dependencies of dependencies) couples the test to internal implementation. If the collaborator's internals change, the test breaks despite the subject's behavior being correct."
+
+  - rule: 'Mirror the production namespace under Test/Unit/ for every test class'
+    example: "Vendor\\Module\\Test\\Unit\\Model\\DataExporterTest tests Vendor\\Module\\Model\\DataExporter"
+    rationale: 'Consistent namespace mirroring makes test discovery automatic and helps developers locate the test for any given class without searching.'
+
+  - rule: 'Use data providers for testing multiple input/output combinations instead of duplicating test methods'
+    example: '@dataProvider invalidInputProvider on a validation test method'
+    rationale: 'Data providers make the test matrix explicit, reduce code duplication, and produce clearer failure messages that identify which input case failed.'
 
 examples:
-  - title: PHPUnit test skeleton
+  - title: 'Service test with setUp and mocks'
+    description: 'Complete unit test for a service class demonstrating mock creation in setUp, method stubbing, and result assertion'
     language: php
     code: |
-      class ExampleServiceTest extends \PHPUnit\Framework\TestCase
+      <?php
+      declare(strict_types=1);
+
+      namespace Vendor\Module\Test\Unit\Model;
+
+      use Magento\Catalog\Api\Data\ProductInterface;
+      use Magento\Catalog\Api\ProductRepositoryInterface;
+      use PHPUnit\Framework\MockObject\MockObject;
+      use PHPUnit\Framework\TestCase;
+      use Vendor\Module\Model\ProductDataExporter;
+
+      class ProductDataExporterTest extends TestCase
       {
-          public function testExecute(): void
+          private ProductRepositoryInterface&MockObject $productRepository;
+          private ProductDataExporter $subject;
+
+          protected function setUp(): void
           {
+              $this->productRepository = $this->createMock(ProductRepositoryInterface::class);
+              $this->subject = new ProductDataExporter($this->productRepository);
+          }
+
+          public function testGetProductNameReturnsNameFromRepository(): void
+          {
+              $product = $this->createMock(ProductInterface::class);
+              $product->method('getName')->willReturn('Test Product');
+
+              $this->productRepository
+                  ->method('getById')
+                  ->with(42)
+                  ->willReturn($product);
+
+              $result = $this->subject->getProductName(42);
+
+              $this->assertSame('Test Product', $result);
+          }
+      }
+
+  - title: 'Exception testing'
+    description: 'Test that verifies a service throws the expected exception with a specific message when given invalid input'
+    language: php
+    code: |
+      <?php
+      declare(strict_types=1);
+
+      namespace Vendor\Module\Test\Unit\Model;
+
+      use Magento\Framework\Exception\NoSuchEntityException;
+      use Magento\Catalog\Api\ProductRepositoryInterface;
+      use PHPUnit\Framework\MockObject\MockObject;
+      use PHPUnit\Framework\TestCase;
+      use Vendor\Module\Model\ProductDataExporter;
+
+      class ProductDataExporterExceptionTest extends TestCase
+      {
+          private ProductRepositoryInterface&MockObject $productRepository;
+          private ProductDataExporter $subject;
+
+          protected function setUp(): void
+          {
+              $this->productRepository = $this->createMock(ProductRepositoryInterface::class);
+              $this->subject = new ProductDataExporter($this->productRepository);
+          }
+
+          public function testGetProductNameThrowsWhenProductNotFound(): void
+          {
+              $this->productRepository
+                  ->method('getById')
+                  ->with(999)
+                  ->willThrowException(
+                      new NoSuchEntityException(__('No such entity with id = 999'))
+                  );
+
+              $this->expectException(NoSuchEntityException::class);
+              $this->expectExceptionMessage('No such entity with id = 999');
+
+              $this->subject->getProductName(999);
+          }
+      }
+
+  - title: 'Data provider for input validation'
+    description: 'Test using a data provider to verify validation logic against multiple invalid input scenarios'
+    language: php
+    code: |
+      <?php
+      declare(strict_types=1);
+
+      namespace Vendor\Module\Test\Unit\Model;
+
+      use PHPUnit\Framework\TestCase;
+      use Vendor\Module\Model\InputValidator;
+
+      class InputValidatorTest extends TestCase
+      {
+          private InputValidator $subject;
+
+          protected function setUp(): void
+          {
+              $this->subject = new InputValidator();
+          }
+
+          /**
+           * @dataProvider invalidInputProvider
+           */
+          public function testValidateRejectsInvalidInput(
+              string $input,
+              string $expectedError
+          ): void {
+              $result = $this->subject->validate($input);
+
+              $this->assertFalse($result->isValid());
+              $this->assertSame($expectedError, $result->getError());
+          }
+
+          /**
+           * @return array<string, array{string, string}>
+           */
+          public static function invalidInputProvider(): array
+          {
+              return [
+                  'empty string' => ['', 'Input cannot be empty'],
+                  'exceeds max length' => [str_repeat('a', 256), 'Input exceeds 255 characters'],
+                  'contains HTML' => ['<script>alert(1)</script>', 'Input contains invalid characters'],
+              ];
           }
       }
 
 anti_patterns:
-  - pattern: Writing integration-style setup inside unit tests
-    problem: Slows tests down and blurs test intent
+  - pattern: 'Using ObjectManager or Bootstrap in unit tests'
+    problem: 'ObjectManager requires the full Magento framework to initialize, adding 10-30 seconds of bootstrap time per test run. Unit tests should run in milliseconds. Framework coupling masks design issues by hiding implicit dependencies.'
+    solution: 'Inject all dependencies through the constructor and mock them in setUp(). If a class cannot be instantiated without ObjectManager, refactor it to accept interface-typed constructor parameters.'
+
+  - pattern: 'Mocking the class under test instead of its dependencies'
+    problem: "Mocking the subject creates a test that verifies mock behavior, not production behavior. The test passes even if the real class is completely broken because the mock's stubbed methods always return the expected values."
+    solution: 'Instantiate the real class under test with mocked dependencies. Only mock the collaborators that are injected through the constructor.'
+
+  - pattern: 'Writing assertions against implementation details instead of behavior'
+    problem: 'Tests that assert specific method call sequences or argument counts break when internal refactoring occurs, even though the observable behavior is unchanged. This creates a high maintenance burden and false failures.'
+    solution: |
+      Assert outcomes: return values, state changes, or thrown exceptions.
+      Use expects($this->once()) only when verifying that a side-effect
+      (like saving to a repository) actually occurs, not for internal calls.
+
+files:
+  - path: 'Test/Unit/Model/{{className}}Test.php'
+    description: 'PHPUnit test class with setUp, mock creation, and a basic test method'
+    template: |
+      <?php
+      declare(strict_types=1);
+
+      namespace {{vendor}}\{{module}}\Test\Unit\Model;
+
+      use PHPUnit\Framework\MockObject\MockObject;
+      use PHPUnit\Framework\TestCase;
+      use {{vendor}}\{{module}}\Model\{{className}};
+
+      class {{className}}Test extends TestCase
+      {
+          private {{className}} $subject;
+
+          protected function setUp(): void
+          {
+              $this->subject = new {{className}}();
+          }
+
+          public function testExpectedBehavior(): void
+          {
+              $this->markTestIncomplete('Implement test logic');
+          }
+      }
+
+  - path: 'phpunit.xml'
+    description: "PHPUnit configuration scoped to the module's unit test directory"
+    template: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/10.5/phpunit.xsd"
+               bootstrap="vendor/autoload.php"
+               colors="true">
+          <testsuites>
+              <testsuite name="{{module}} Unit Tests">
+                  <directory>Test/Unit</directory>
+              </testsuite>
+          </testsuites>
+      </phpunit>
 
 references:
-  - title: PHPUnit documentation
-    url: https://docs.phpunit.de/
+  - title: 'PHPUnit documentation'
+    url: 'https://docs.phpunit.de/'
+  - title: 'Adobe Commerce: Unit testing'
+    url: 'https://developer.adobe.com/commerce/testing/guide/unit/'
 
 compatibility:
   - claude

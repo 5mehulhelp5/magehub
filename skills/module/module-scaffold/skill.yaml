@@ -1,48 +1,169 @@
 id: module-scaffold
 name: Module Scaffolding
-version: "1.0.0"
+version: '1.0.0'
 category: module
-description: Create standard Magento 2 module structure with required bootstrap files
+description: Create a new Magento 2 module with the required directory structure, registration files, composer autoloading, and module sequence declarations
 
 tags:
   - module
   - scaffold
   - registration
+  - composer
+  - module-xml
+  - boilerplate
 
 magento_versions:
-  - "2.4.x"
+  - '2.4.x'
 
 instructions: |
-  ### Module Structure
+  ### Magento 2 Module Bootstrap
 
-  Start every custom module with a valid Magento 2 directory structure and required registration files.
+  Every custom module requires three files before Magento will recognize it:
+  `registration.php`, `etc/module.xml`, and `composer.json`. Missing any one of
+  these causes the module to be silently ignored during setup:upgrade.
 
-  ### Required Files
+  ### Directory Layout
 
-  - Create `registration.php`
-  - Create `etc/module.xml`
-  - Add `composer.json` with PSR-4 autoloading
+  Place module source under `app/code/<Vendor>/<Module>/` for project-level
+  modules or ship as a Composer package installed into `vendor/`. The directory
+  name must match the `Vendor_Module` identifier exactly — case-sensitive on
+  Linux filesystems.
+
+  Recommended initial structure:
+  - `registration.php` — registers the component with the framework
+  - `etc/module.xml` — declares the module name and setup version sequence
+  - `composer.json` — PSR-4 autoloading, package metadata, and dependencies
+
+  ### Registration File
+
+  `registration.php` must call `ComponentRegistrar::register()` with the
+  `MODULE` type and the `Vendor_ModuleName` identifier. This file is
+  auto-included by the Composer-generated autoloader; it must not contain class
+  definitions or side-effects beyond the single register call.
+
+  ### Module XML and Sequencing
+
+  Declare `<module name="Vendor_ModuleName">` in `etc/module.xml`. Use the
+  `<sequence>` element to list modules that must load before yours — this
+  controls schema patch and config merge ordering, not runtime dependency
+  injection. Only declare sequence entries for modules whose configuration,
+  schema, or layout your module directly overrides.
+
+  ### Composer Configuration
+
+  Set `type` to `magento2-module` so the Magento Composer installer places the
+  package correctly. Map the PSR-4 namespace root to the module directory.
+  Require `magento/framework` at a minimum and add specific module dependencies
+  as Composer `require` entries, keeping them aligned with `<sequence>`.
+
+  ### Post-Scaffold Steps
+
+  Run `bin/magento module:enable Vendor_ModuleName` followed by
+  `bin/magento setup:upgrade` to register the module in `config.php` and
+  execute any setup patches.
 
 conventions:
-  - rule: Use `Vendor_ModuleName` naming in PascalCase
-    rationale: Magento module discovery and conventions depend on this format
+  - rule: 'Name modules as Vendor_ModuleName using PascalCase for both segments'
+    example: 'Acme_InventoryReservation, not acme_inventory-reservation'
+    rationale: 'Magento module discovery splits on underscore and expects PascalCase directory names. Incorrect casing causes autoload failures on case-sensitive filesystems.'
+
+  - rule: 'Declare sequence dependencies only for modules whose config or schema you directly override'
+    example: '<sequence><module name="Magento_Catalog"/></sequence> when overriding catalog layout XML'
+    rationale: 'Over-sequencing creates unnecessary load-order constraints and slows setup:upgrade. Under-sequencing causes config merge order bugs that surface only in specific environments.'
+
+  - rule: 'Keep registration.php free of logic — one register call only'
+    example: "ComponentRegistrar::register(ComponentRegistrar::MODULE, 'Vendor_Module', __DIR__);"
+    rationale: 'Registration files execute on every request via Composer autoload. Side-effects here bypass the DI container and cause hard-to-trace performance and compatibility issues.'
 
 examples:
-  - title: registration.php
+  - title: 'registration.php'
+    description: 'Standard module registration file with strict types and the single required ComponentRegistrar call'
     language: php
     code: |
       <?php
+      declare(strict_types=1);
+
       use Magento\Framework\Component\ComponentRegistrar;
 
-      ComponentRegistrar::register(ComponentRegistrar::MODULE, 'Vendor_ModuleName', __DIR__);
+      ComponentRegistrar::register(ComponentRegistrar::MODULE, 'Vendor_Module', __DIR__);
+
+  - title: 'etc/module.xml with sequence'
+    description: 'Module declaration with a sequence dependency on Magento_Catalog to ensure correct config merge and schema patch order'
+    language: xml
+    code: |
+      <?xml version="1.0"?>
+      <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+          <module name="Vendor_Module">
+              <sequence>
+                  <module name="Magento_Catalog"/>
+              </sequence>
+          </module>
+      </config>
+
+  - title: 'composer.json'
+    description: 'Composer package definition with PSR-4 autoloading, magento2-module type, and framework dependency'
+    language: json
+    code: |
+      {
+          "name": "vendor/module-module",
+          "description": "Custom Magento 2 module",
+          "type": "magento2-module",
+          "require": {
+              "php": ">=8.1",
+              "magento/framework": "*"
+          },
+          "autoload": {
+              "files": [
+                  "registration.php"
+              ],
+              "psr-4": {
+                  "Vendor\\Module\\": ""
+              }
+          }
+      }
 
 anti_patterns:
-  - pattern: Missing module.xml
-    problem: Magento cannot register the module version and sequence data
+  - pattern: 'Missing etc/module.xml while registration.php exists'
+    problem: "The module registers with the autoloader but Magento's module manager never loads it. Commands like setup:upgrade silently skip it, and no error appears in logs."
+    solution: 'Always create etc/module.xml alongside registration.php. Run bin/magento module:status to verify the module appears in the enabled or disabled list.'
+
+  - pattern: 'Hardcoding setup_version in module.xml for new modules'
+    problem: 'The setup_version attribute is a legacy pattern from Magento 2.2 and earlier. Declarative schema and data patches replaced version-based setup scripts. Including it causes confusion about which migration system is active.'
+    solution: 'Omit setup_version entirely for new modules. Use db_schema.xml for table definitions and DataPatchInterface classes for data migrations.'
+
+  - pattern: 'PSR-4 namespace root does not match directory path'
+    problem: 'Autoloader cannot find classes. Fatal errors appear only at runtime when the class is first instantiated through DI, making the root cause non-obvious.'
+    solution: |
+      Ensure the psr-4 key matches the directory structure exactly:
+      "psr-4": { "Vendor\\Module\\": "" }
+      for app/code/Vendor/Module, or adjust the path when using a src/ subdirectory.
+
+files:
+  - path: 'registration.php'
+    description: 'Module registration file — required for Magento to discover the module'
+    template: |
+      <?php
+      declare(strict_types=1);
+
+      use Magento\Framework\Component\ComponentRegistrar;
+
+      ComponentRegistrar::register(ComponentRegistrar::MODULE, '{{vendor}}_{{module}}', __DIR__);
+
+  - path: 'etc/module.xml'
+    description: 'Module declaration with optional sequence dependencies'
+    template: |
+      <?xml version="1.0"?>
+      <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+          <module name="{{vendor}}_{{module}}"/>
+      </config>
 
 references:
-  - title: Adobe Commerce module structure
-    url: https://developer.adobe.com/commerce/php/development/build/component-registration/
+  - title: 'Adobe Commerce: Module registration'
+    url: 'https://developer.adobe.com/commerce/php/development/build/component-registration/'
+  - title: 'Adobe Commerce: Module dependencies'
+    url: 'https://developer.adobe.com/commerce/php/development/build/component-file-structure/'
 
 compatibility:
   - claude

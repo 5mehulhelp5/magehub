@@ -1,46 +1,214 @@
 id: module-di
 name: Dependency Injection
-version: "1.0.0"
+version: '1.0.0'
 category: module
-description: Configure Magento 2 dependency injection, preferences, and virtual types safely
+description: Configure Magento 2 dependency injection — preferences, virtual types, constructor arguments, and proxy generation via di.xml
 
 tags:
   - di
   - preference
   - virtualtype
+  - proxy
+  - constructor-injection
+  - object-manager
 
 magento_versions:
-  - "2.4.x"
+  - '2.4.x'
 
 instructions: |
-  ### Dependency Injection
+  ### Magento 2 Dependency Injection System
 
-  Use constructor injection and `etc/di.xml` for dependency wiring.
+  Magento's object manager resolves all class dependencies through constructor
+  injection configured in `etc/di.xml`. Understanding this system is essential
+  because every service, model, and controller receives its collaborators
+  through the DI container — never through manual instantiation.
 
-  ### Preferred Patterns
+  ### Constructor Injection
 
-  - Inject interfaces where possible
-  - Use preferences sparingly
-  - Reach for virtual types before copying constructor wiring
+  Declare all dependencies as constructor parameters with interface type hints.
+  The object manager automatically resolves concrete implementations based on
+  `di.xml` preferences. Avoid requesting concrete classes directly — interface
+  injection keeps your code decoupled and allows other modules to substitute
+  implementations via preferences.
+
+  ### Preferences
+
+  Use `<preference>` to bind an interface to its default concrete implementation.
+  Preferences are global unless scoped to a specific area (`etc/frontend/di.xml`,
+  `etc/adminhtml/di.xml`). Only one preference per interface can be active at a
+  time — later-loaded modules override earlier ones based on sequence order.
+
+  ### Virtual Types
+
+  Create `<virtualType>` entries when you need a class with a different set of
+  constructor arguments but no behavioral changes. Virtual types avoid creating
+  empty subclasses solely to change injected values. They are resolved only by
+  the DI container — they have no real PHP class file and cannot be used with
+  `instanceof` checks.
+
+  ### Proxy Classes
+
+  Declare `<proxy>` types for expensive dependencies that are not always used.
+  Proxies defer instantiation until the first method call, reducing the cost of
+  object graph construction. Use proxies on optional collaborators in commands,
+  cron jobs, and observers where the dependency is invoked conditionally.
+
+  ### Area Scoping
+
+  Place `di.xml` in `etc/` for global scope, `etc/frontend/` for storefront,
+  and `etc/adminhtml/` for admin. Area-scoped configuration overrides global
+  configuration. Keep preferences and type configurations in the narrowest scope
+  that applies to prevent unintended side effects in other areas.
 
 conventions:
-  - rule: Prefer constructor injection over service locator usage
-    rationale: Keeps classes testable and aligned with Magento architecture
+  - rule: 'Inject interfaces, not concrete classes, in constructor parameters'
+    example: 'public function __construct(ProductRepositoryInterface $productRepository)'
+    rationale: 'Interface injection allows other modules to substitute implementations via preferences and keeps code decoupled from specific implementations.'
+
+  - rule: 'Use virtual types instead of empty subclasses when only constructor arguments differ'
+    example: "<virtualType name=\"CustomLogger\" type=\"Magento\\Framework\\Logger\\Monolog\"> with custom handler arguments"
+    rationale: 'Virtual types eliminate unnecessary PHP class files and make the DI configuration the single source of truth for constructor wiring.'
+
+  - rule: 'Never call ObjectManager directly in business classes'
+    example: 'Replace ObjectManager::getInstance()->get(Logger::class) with constructor-injected LoggerInterface'
+    rationale: 'Direct ObjectManager usage hides dependencies, breaks unit test isolation, and circumvents the DI configuration that other modules rely on for customization.'
 
 examples:
-  - title: di.xml preference
+  - title: 'Interface preference binding'
+    description: 'Bind an interface to its concrete implementation so the object manager resolves the correct class for all constructor injections'
     language: xml
     code: |
-      <preference for="Vendor\Module\Api\ThingInterface"
-                  type="Vendor\Module\Model\Thing"/>
+      <?xml version="1.0"?>
+      <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+          <preference for="Vendor\Module\Api\DataProviderInterface"
+                      type="Vendor\Module\Model\DataProvider"/>
+      </config>
+
+  - title: 'Virtual type with custom constructor arguments'
+    description: 'Create a virtual logger instance with a custom handler without writing a PHP subclass'
+    language: xml
+    code: |
+      <?xml version="1.0"?>
+      <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+          <virtualType name="Vendor\Module\Model\VirtualDebugLogger"
+                       type="Magento\Framework\Logger\Monolog">
+              <arguments>
+                  <argument name="name" xsi:type="string">vendor_module</argument>
+                  <argument name="handlers" xsi:type="array">
+                      <item name="debug" xsi:type="object">Vendor\Module\Logger\DebugHandler</item>
+                  </argument>
+              </arguments>
+          </virtualType>
+
+          <type name="Vendor\Module\Model\ImportProcessor">
+              <arguments>
+                  <argument name="logger" xsi:type="object">Vendor\Module\Model\VirtualDebugLogger</argument>
+              </arguments>
+          </type>
+      </config>
+
+  - title: 'Service class with constructor injection'
+    description: 'Production-ready service class demonstrating proper constructor injection with interface type hints'
+    language: php
+    code: |
+      <?php
+      declare(strict_types=1);
+
+      namespace Vendor\Module\Model;
+
+      use Magento\Catalog\Api\ProductRepositoryInterface;
+      use Magento\Framework\Api\SearchCriteriaBuilder;
+      use Psr\Log\LoggerInterface;
+
+      class ProductDataExporter
+      {
+          public function __construct(
+              private readonly ProductRepositoryInterface $productRepository,
+              private readonly SearchCriteriaBuilder $searchCriteriaBuilder,
+              private readonly LoggerInterface $logger
+          ) {
+          }
+
+          public function getActiveProducts(int $storeId): array
+          {
+              $criteria = $this->searchCriteriaBuilder
+                  ->addFilter('status', 1)
+                  ->addFilter('store_id', $storeId)
+                  ->create();
+
+              try {
+                  $result = $this->productRepository->getList($criteria);
+              } catch (\Exception $e) {
+                  $this->logger->error('Failed to load products', [
+                      'store_id' => $storeId,
+                      'exception' => $e->getMessage(),
+                  ]);
+
+                  return [];
+              }
+
+              return $result->getItems();
+          }
+      }
 
 anti_patterns:
-  - pattern: Direct ObjectManager usage in business classes
-    problem: Hides dependencies and breaks testability
+  - pattern: 'Direct ObjectManager usage in models, services, or controllers'
+    problem: 'Hidden dependencies make the class impossible to unit test in isolation. Other modules cannot substitute implementations via di.xml because the dependency is resolved at call time, bypassing the DI container.'
+    solution: |
+      Replace all ObjectManager::getInstance()->get() and create() calls with
+      constructor-injected dependencies:
+      public function __construct(
+          private readonly ProductRepositoryInterface $productRepository
+      ) {}
+
+  - pattern: 'Creating empty PHP subclasses only to change constructor arguments'
+    problem: 'Pollutes the codebase with classes that contain no logic. Each empty subclass is another file to maintain and adds confusion about where behavior lives.'
+    solution: |
+      Use a virtualType in di.xml instead:
+      <virtualType name="CustomizedService" type="Vendor\Module\Model\BaseService">
+          <arguments>
+              <argument name="config" xsi:type="string">custom_value</argument>
+          </arguments>
+      </virtualType>
+
+  - pattern: 'Defining preferences in global di.xml when they only apply to one area'
+    problem: 'A global preference overrides the interface binding in all areas — frontend, adminhtml, cron, REST, GraphQL. This causes unintended behavior when different areas need different implementations.'
+    solution: 'Place the preference in the area-specific di.xml file (etc/frontend/di.xml or etc/adminhtml/di.xml) to restrict the binding to the intended scope.'
+
+files:
+  - path: 'etc/di.xml'
+    description: 'Global dependency injection configuration with preferences and type argument overrides'
+    template: |
+      <?xml version="1.0"?>
+      <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+          <preference for="{{vendor}}\{{module}}\Api\{{interfaceName}}"
+                      type="{{vendor}}\{{module}}\Model\{{className}}"/>
+      </config>
+
+  - path: 'Api/{{interfaceName}}.php'
+    description: "Service contract interface for the module's primary API"
+    template: |
+      <?php
+      declare(strict_types=1);
+
+      namespace {{vendor}}\{{module}}\Api;
+
+      interface {{interfaceName}}
+      {
+          /**
+           * @return mixed
+           */
+          public function execute(): mixed;
+      }
 
 references:
-  - title: Adobe Commerce dependency injection
-    url: https://developer.adobe.com/commerce/php/development/build/dependency-injection-file/
+  - title: 'Adobe Commerce: Dependency injection configuration'
+    url: 'https://developer.adobe.com/commerce/php/development/build/dependency-injection-file/'
+  - title: 'Adobe Commerce: Object manager overview'
+    url: 'https://developer.adobe.com/commerce/php/development/components/object-manager/'
 
 compatibility:
   - claude
