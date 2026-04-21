@@ -6,6 +6,5 @@ test-results/
 .magehub/
 .opencode/
 *.log
-CLAUDE.md
 AGENTS.test.md
 .cursor-rules-test.mdc
