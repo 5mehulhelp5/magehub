@@ -8,10 +8,10 @@ import {
   createDefaultConfig,
   loadConfig,
   resolveCustomSkillsPath,
-  resolveOutputPath,
   saveConfig,
   validateConfigFile,
 } from '../../src/core/config-manager.js';
+import { resolveOutputTarget } from '../../src/core/formats.js';
 import { clearSchemaValidatorCache } from '../../src/core/schema-validator.js';
 import {
   createFixtureRepo,
@@ -48,47 +48,63 @@ describe('config-manager', () => {
     });
   });
 
-  describe('resolveOutputPath', () => {
-    it('resolves claude output to CLAUDE.md', () => {
-      expect(resolveOutputPath('/project', 'claude')).toBe(
-        path.join('/project', 'CLAUDE.md'),
-      );
+  describe('resolveOutputTarget', () => {
+    it('resolves claude output to a .claude/skills directory', () => {
+      const target = resolveOutputTarget('/project', 'claude');
+      expect(target.kind).toBe('directory');
+      expect(target.path).toBe(path.join('/project', '.claude', 'skills'));
     });
 
-    it('resolves codex output to AGENTS.md', () => {
-      expect(resolveOutputPath('/project', 'codex')).toBe(
-        path.join('/project', 'AGENTS.md'),
-      );
+    it('resolves opencode output to a .opencode/skills directory', () => {
+      const target = resolveOutputTarget('/project', 'opencode');
+      expect(target.kind).toBe('directory');
+      expect(target.path).toBe(path.join('/project', '.opencode', 'skills'));
     });
 
-    it('resolves opencode output to .opencode/skills/magehub.md', () => {
-      expect(resolveOutputPath('/project', 'opencode')).toBe(
-        path.join('/project', '.opencode', 'skills', 'magehub.md'),
-      );
+    it('resolves trae output to a .trae/rules directory', () => {
+      const target = resolveOutputTarget('/project', 'trae');
+      expect(target.kind).toBe('directory');
+      expect(target.path).toBe(path.join('/project', '.trae', 'rules'));
     });
 
-    it('resolves cursor output to .cursorrules', () => {
-      expect(resolveOutputPath('/project', 'cursor')).toBe(
-        path.join('/project', '.cursorrules'),
-      );
+    it('resolves codex output to a single AGENTS.md file', () => {
+      const target = resolveOutputTarget('/project', 'codex');
+      expect(target.kind).toBe('file');
+      expect(target.path).toBe(path.join('/project', 'AGENTS.md'));
     });
 
-    it('resolves qoder output to .qoder/context.md', () => {
-      expect(resolveOutputPath('/project', 'qoder')).toBe(
-        path.join('/project', '.qoder', 'context.md'),
-      );
+    it('resolves cursor output to a single .cursorrules file', () => {
+      const target = resolveOutputTarget('/project', 'cursor');
+      expect(target.kind).toBe('file');
+      expect(target.path).toBe(path.join('/project', '.cursorrules'));
     });
 
-    it('resolves trae output to .trae/rules/magehub.md', () => {
-      expect(resolveOutputPath('/project', 'trae')).toBe(
-        path.join('/project', '.trae', 'rules', 'magehub.md'),
-      );
+    it('resolves qoder output to a single .qoder/context.md file', () => {
+      const target = resolveOutputTarget('/project', 'qoder');
+      expect(target.kind).toBe('file');
+      expect(target.path).toBe(path.join('/project', '.qoder', 'context.md'));
     });
 
-    it('resolves markdown output to MAGEHUB.md', () => {
-      expect(resolveOutputPath('/project', 'markdown')).toBe(
-        path.join('/project', 'MAGEHUB.md'),
+    it('resolves markdown output to a single MAGEHUB.md file', () => {
+      const target = resolveOutputTarget('/project', 'markdown');
+      expect(target.kind).toBe('file');
+      expect(target.path).toBe(path.join('/project', 'MAGEHUB.md'));
+    });
+
+    it('honors an absolute override for single-file formats', () => {
+      const target = resolveOutputTarget(
+        '/project',
+        'codex',
+        '/tmp/elsewhere.md',
       );
+      expect(target.kind).toBe('file');
+      expect(target.path).toBe('/tmp/elsewhere.md');
+    });
+
+    it('honors a relative override for per-skill formats', () => {
+      const target = resolveOutputTarget('/project', 'claude', 'custom/skills');
+      expect(target.kind).toBe('directory');
+      expect(target.path).toBe(path.join('/project', 'custom', 'skills'));
     });
   });
 

@@ -3,23 +3,33 @@ import { readFile } from 'node:fs/promises';
 import type { MageHubConfig, OutputFormat } from '../types/config.js';
 import type { Skill } from '../types/skill.js';
 import { renderTemplate } from '../utils/template.js';
+import { getFormatMetadata } from './formats.js';
 import { resolveBundledTemplatePath } from './runtime-assets.js';
 
-export interface RenderGenerateOptions {
+export interface RenderOptions {
   format: OutputFormat;
   includeExamples: boolean;
   includeAntipatterns: boolean;
-  rootDir: string;
 }
 
-function renderSkillSection(
+export interface SingleFileArtifact {
+  kind: 'single-file';
+  content: string;
+}
+
+export interface PerSkillArtifact {
+  kind: 'per-skill-file';
+  files: Array<{ skillId: string; content: string }>;
+}
+
+export type RenderArtifact = SingleFileArtifact | PerSkillArtifact;
+
+function renderSkillBody(
   skill: Skill,
-  options: Omit<RenderGenerateOptions, 'format' | 'rootDir'>,
+  options: Pick<RenderOptions, 'includeExamples' | 'includeAntipatterns'>,
 ): string {
   const sections: string[] = [];
 
-  sections.push(`## ${skill.name} (${skill.id})`);
-  sections.push('');
   sections.push(skill.instructions.trim());
 
   if ((skill.conventions?.length ?? 0) > 0) {
@@ -56,6 +66,15 @@ function renderSkillSection(
   }
 
   return sections.join('\n').trim();
+}
+
+function renderSkillSection(
+  skill: Skill,
+  options: Pick<RenderOptions, 'includeExamples' | 'includeAntipatterns'>,
+): string {
+  const heading = `## ${skill.name} (${skill.id})`;
+  const body = renderSkillBody(skill, options);
+  return `${heading}\n\n${body}`;
 }
 
 export function renderSkillDetail(skill: Skill): string {
@@ -132,7 +151,7 @@ export function renderConfig(config: MageHubConfig): string {
   return JSON.stringify(config, null, 2);
 }
 
-function getTemplateContext(
+function buildSingleFileContext(
   skills: Skill[],
   content: string,
 ): Record<string, unknown> {
@@ -149,20 +168,60 @@ function getTemplateContext(
   };
 }
 
-export async function renderGeneratedOutput(
-  skills: Skill[],
-  options: RenderGenerateOptions,
-): Promise<string> {
-  const templatePath = resolveBundledTemplatePath(options.format);
-  const template = await readFile(templatePath, 'utf8');
-  const content = skills
-    .map((skill) =>
-      renderSkillSection(skill, {
-        includeExamples: options.includeExamples,
-        includeAntipatterns: options.includeAntipatterns,
-      }),
-    )
-    .join('\n\n---\n\n');
+function buildPerSkillContext(
+  skill: Skill,
+  body: string,
+): Record<string, unknown> {
+  return {
+    id: skill.id,
+    name: skill.name,
+    description: skill.description,
+    version: skill.version,
+    category: skill.category,
+    tags: skill.tags ?? [],
+    body,
+  };
+}
 
-  return renderTemplate(template, getTemplateContext(skills, content));
+async function loadTemplate(
+  format: OutputFormat,
+  variant?: string,
+): Promise<string> {
+  const templatePath = resolveBundledTemplatePath(format, variant);
+  return readFile(templatePath, 'utf8');
+}
+
+export async function renderArtifact(
+  skills: Skill[],
+  options: RenderOptions,
+): Promise<RenderArtifact> {
+  const metadata = getFormatMetadata(options.format);
+  const bodyOptions = {
+    includeExamples: options.includeExamples,
+    includeAntipatterns: options.includeAntipatterns,
+  };
+
+  if (metadata.strategy === 'single-file') {
+    const template = await loadTemplate(options.format);
+    const content = skills
+      .map((skill) => renderSkillSection(skill, bodyOptions))
+      .join('\n\n---\n\n');
+    return {
+      kind: 'single-file',
+      content: renderTemplate(
+        template,
+        buildSingleFileContext(skills, content),
+      ),
+    };
+  }
+
+  const template = await loadTemplate(options.format, 'skill');
+  const files = skills.map((skill) => {
+    const body = renderSkillBody(skill, bodyOptions);
+    return {
+      skillId: skill.id,
+      content: renderTemplate(template, buildPerSkillContext(skill, body)),
+    };
+  });
+  return { kind: 'per-skill-file', files };
 }

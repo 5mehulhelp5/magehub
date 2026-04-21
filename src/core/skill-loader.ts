@@ -34,8 +34,13 @@ export async function listSkillFiles(skillsDir: string): Promise<string[]> {
     return allFiles
       .filter((filePath) => filePath.endsWith('skill.yaml'))
       .sort();
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+  } catch (error: unknown) {
+    if (
+      error instanceof Error &&
+      'code' in error &&
+      typeof error.code === 'string' &&
+      error.code === 'ENOENT'
+    ) {
       return [];
     }
 

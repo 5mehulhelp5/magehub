@@ -1,11 +1,14 @@
 import { readFile, writeFile } from 'node:fs/promises';
-import path from 'node:path';
 
 import YAML from 'yaml';
 
-import type { MageHubConfig } from '../types/config.js';
+import type { MageHubConfig, OutputFormat } from '../types/config.js';
+import { detectFormat } from './formats.js';
 import { createMageHubPaths } from './paths.js';
-import { isPathInsideProject, resolveProjectRelativePath } from './runtime-assets.js';
+import {
+  isPathInsideProject,
+  resolveProjectRelativePath,
+} from './runtime-assets.js';
 import { validateConfigSchema } from './schema-validator.js';
 
 export interface ConfigLoadResult {
@@ -13,28 +16,23 @@ export interface ConfigLoadResult {
   filePath: string;
 }
 
-export function createDefaultConfig(): MageHubConfig {
+export function createDefaultConfig(
+  format: OutputFormat = 'claude',
+): MageHubConfig {
   return {
     version: '1',
     skills: [],
-    format: 'claude',
+    format,
     include_examples: true,
     include_antipatterns: true,
   };
 }
 
-export function resolveOutputPath(rootDir: string, format: NonNullable<MageHubConfig['format']>): string {
-  const defaults: Record<NonNullable<MageHubConfig['format']>, string> = {
-    claude: 'CLAUDE.md',
-    opencode: path.join('.opencode', 'skills', 'magehub.md'),
-    cursor: '.cursorrules',
-    codex: 'AGENTS.md',
-    qoder: path.join('.qoder', 'context.md'),
-    trae: path.join('.trae', 'rules', 'magehub.md'),
-    markdown: 'MAGEHUB.md',
-  };
-
-  return path.join(rootDir, defaults[format]);
+export async function createBootstrapConfig(
+  rootDir: string,
+): Promise<MageHubConfig> {
+  const format = await detectFormat(rootDir);
+  return createDefaultConfig(format);
 }
 
 export async function loadConfig(rootDir: string): Promise<ConfigLoadResult> {
@@ -44,7 +42,9 @@ export async function loadConfig(rootDir: string): Promise<ConfigLoadResult> {
   const validation = await validateConfigSchema(parsed);
 
   if (!validation.valid || validation.data === undefined) {
-    throw new Error(`Invalid config file ${configFile}: ${validation.errors.join('; ')}`);
+    throw new Error(
+      `Invalid config file ${configFile}: ${validation.errors.join('; ')}`,
+    );
   }
 
   return {
@@ -53,7 +53,9 @@ export async function loadConfig(rootDir: string): Promise<ConfigLoadResult> {
   };
 }
 
-export async function validateConfigFile(rootDir: string): Promise<{ filePath: string; errors: string[]; valid: boolean }> {
+export async function validateConfigFile(
+  rootDir: string,
+): Promise<{ filePath: string; errors: string[]; valid: boolean }> {
   const { configFile } = createMageHubPaths(rootDir);
   const content = await readFile(configFile, 'utf8');
   const parsed: unknown = YAML.parse(content);
@@ -66,17 +68,29 @@ export async function validateConfigFile(rootDir: string): Promise<{ filePath: s
   };
 }
 
-export async function saveConfig(rootDir: string, config: MageHubConfig): Promise<void> {
+export async function saveConfig(
+  rootDir: string,
+  config: MageHubConfig,
+): Promise<void> {
   const { configFile } = createMageHubPaths(rootDir);
   await writeFile(configFile, YAML.stringify(config), 'utf8');
 }
 
-export function resolveCustomSkillsPath(rootDir: string, config: MageHubConfig): string | undefined {
-  if (config.custom_skills_path === undefined || config.custom_skills_path.trim() === '') {
+export function resolveCustomSkillsPath(
+  rootDir: string,
+  config: MageHubConfig,
+): string | undefined {
+  if (
+    config.custom_skills_path === undefined ||
+    config.custom_skills_path.trim() === ''
+  ) {
     return undefined;
   }
 
-  const resolved = resolveProjectRelativePath(rootDir, config.custom_skills_path);
+  const resolved = resolveProjectRelativePath(
+    rootDir,
+    config.custom_skills_path,
+  );
   if (!isPathInsideProject(rootDir, resolved)) {
     throw new Error('custom_skills_path must stay within the project root');
   }

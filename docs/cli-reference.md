@@ -1,13 +1,23 @@
 # MageHub CLI Reference
 
-## Commands
+## Quick Start
 
-### `setup:init`
-
-Initialize MageHub in the current project.
+The fastest path is one command:
 
 ```bash
-magehub setup:init [--format=<format>]
+magehub install module-plugin performance-caching
+```
+
+This auto-detects your AI tool, creates `.magehub.yaml` if missing, renders the selected skills to disk, and updates `.gitignore`.
+
+## Commands
+
+### `setup:init` (optional)
+
+Create `.magehub.yaml` without installing skills. Skipping this is fine — `skill:install` bootstraps the config on first use.
+
+```bash
+magehub setup:init [--format=<format>] [--no-gitignore]
 ```
 
 ### `skill:list`
@@ -34,21 +44,25 @@ Show details for a single skill.
 magehub skill:show <skill-id>
 ```
 
-### `skill:install`
+### `skill:install` (alias: `install`)
 
-Install one or more skills into `.magehub.yaml`.
+Install one or more skills into `.magehub.yaml` and render output files. If `.magehub.yaml` does not exist, it is created with an auto-detected format.
 
 ```bash
-magehub skill:install <skill-id...>
-magehub skill:install --category=<category>
+magehub install <skill-id...>
+magehub install --category=<category>
+magehub install <skill-id...> --format=<format>   # override detection
+magehub install <skill-id...> --no-write          # update config only
+magehub install <skill-id...> --no-gitignore      # skip .gitignore update
 ```
 
-### `skill:remove`
+### `skill:remove` (alias: `remove`)
 
-Remove one or more installed skills from `.magehub.yaml`.
+Remove one or more installed skills from `.magehub.yaml` and clean their rendered files.
 
 ```bash
-magehub skill:remove <skill-id...>
+magehub remove <skill-id...>
+magehub remove <skill-id...> --no-write           # skip file cleanup
 ```
 
 ### `skill:verify`
@@ -79,25 +93,29 @@ magehub config:validate
 
 ### `generate`
 
-Generate an AI-tool context file from configured or explicitly selected skills.
+Re-render all configured skills. Useful after editing `.magehub.yaml` by hand or switching formats.
 
 ```bash
 magehub generate [--format=<format>] [--output=<path>] [--skills=<id,id>] [--no-examples] [--no-antipatterns]
 ```
 
-## Supported Formats
+## Output Layout by Format
 
-- `claude`
-- `opencode`
-- `cursor`
-- `codex`
-- `qoder`
-- `trae`
-- `markdown`
+| Format     | Strategy       | Default output                   |
+| ---------- | -------------- | -------------------------------- |
+| `claude`   | per-skill file | `.claude/skills/<id>/SKILL.md`   |
+| `opencode` | per-skill file | `.opencode/skills/<id>/SKILL.md` |
+| `trae`     | per-skill file | `.trae/rules/<id>.md`            |
+| `cursor`   | single file    | `.cursorrules`                   |
+| `codex`    | single file    | `AGENTS.md`                      |
+| `qoder`    | single file    | `.qoder/context.md`              |
+| `markdown` | single file    | `MAGEHUB.md`                     |
+
+Per-skill formats write one file per installed skill with YAML frontmatter. Single-file formats concatenate all skills into one document.
 
 ## Exit Behavior
 
 - invalid CLI inputs fail early
-- missing/invalid `.magehub.yaml` returns a config error
+- missing/invalid `.magehub.yaml` returns a config error (except `skill:install`, which bootstraps instead)
 - invalid skill files return a skill validation error
 - duplicate local skill IDs fail registry creation
