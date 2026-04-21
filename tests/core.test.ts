@@ -1,8 +1,6 @@
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-
-import { readFile } from 'node:fs/promises';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -273,8 +271,12 @@ describe('core services and commands', () => {
   });
 
   it('installs and removes skills in config', async () => {
-    await runSkillInstallCommand(['module-plugin'], {}, rootDir);
-    await runSkillRemoveCommand(['module-plugin'], rootDir);
+    await runSkillInstallCommand(
+      ['module-plugin'],
+      { write: false, gitignore: false },
+      rootDir,
+    );
+    await runSkillRemoveCommand(['module-plugin'], { write: false }, rootDir);
 
     const loaded = await loadConfig(rootDir);
     expect(loaded.config.skills).toEqual([]);
@@ -282,17 +284,23 @@ describe('core services and commands', () => {
 
   it('rejects removing skills that are not installed', async () => {
     await expect(
-      runSkillRemoveCommand(['missing-skill'], rootDir),
+      runSkillRemoveCommand(['missing-skill'], { write: false }, rootDir),
     ).rejects.toThrow('Skills not installed');
   });
 
   it('generates output from config and templates', async () => {
-    const outputPath = path.join(rootDir, 'CLAUDE.md');
+    const outputPath = path.join(
+      rootDir,
+      '.claude',
+      'skills',
+      'module-plugin',
+      'SKILL.md',
+    );
     await runGenerateCommand({}, rootDir);
 
     const content = await readFile(outputPath, 'utf8');
-    expect(content).toContain('# MageHub Context');
-    expect(content).toContain('## Plugin Development (module-plugin)');
+    expect(content).toContain('# Plugin Development');
+    expect(content).toContain('name: module-plugin');
   });
 
   it('creates a default config during setup:init', async () => {
@@ -345,7 +353,7 @@ describe('core services and commands', () => {
 
     await runSetupInitCommand({ format: 'claude' }, initRoot);
     const gitignore = await readFile(path.join(initRoot, '.gitignore'), 'utf8');
-    expect(gitignore).toContain('CLAUDE.md');
+    expect(gitignore).toContain('.claude/skills/');
     expect(gitignore).toContain('# MageHub generated output');
   });
 

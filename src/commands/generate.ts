@@ -1,11 +1,11 @@
 import type { Command } from 'commander';
 
-import { writeUtf8 } from '../utils/fs.js';
+import { loadConfig } from '../core/config-manager.js';
+import { renderArtifact } from '../core/renderer.js';
+import { createSkillRegistry } from '../core/skill-registry.js';
+import { writeArtifact } from '../core/writer.js';
 import { CliError } from '../utils/cli-error.js';
 import { info } from '../utils/logger.js';
-import { loadConfig, resolveOutputPath } from '../core/config-manager.js';
-import { renderGeneratedOutput } from '../core/renderer.js';
-import { createSkillRegistry } from '../core/skill-registry.js';
 import { parseOutputFormat } from '../utils/validation.js';
 
 export async function runGenerateCommand(
@@ -22,7 +22,7 @@ export async function runGenerateCommand(
   const loaded = await loadConfig(effectiveRootDir).catch((error: unknown) => {
     const detail = error instanceof Error ? `: ${error.message}` : '';
     throw new CliError(
-      `Missing or invalid .magehub.yaml${detail}. Run \`magehub setup:init\` first.`,
+      `Missing or invalid .magehub.yaml${detail}. Run \`magehub skill:install <id>\` to bootstrap.`,
       2,
     );
   });
@@ -61,29 +61,34 @@ export async function runGenerateCommand(
     return skill;
   });
 
-  const outputPath =
-    options.output ??
-    loaded.config.output ??
-    resolveOutputPath(effectiveRootDir, format);
-  const output = await renderGeneratedOutput(skills, {
+  const artifact = await renderArtifact(skills, {
     format,
     includeExamples: options.examples ?? loaded.config.include_examples ?? true,
     includeAntipatterns:
       options.antipatterns ?? loaded.config.include_antipatterns ?? true,
-    rootDir: effectiveRootDir,
   });
 
-  await writeUtf8(outputPath, output);
-  info(`Generated: ${outputPath}`);
+  const result = await writeArtifact(
+    effectiveRootDir,
+    format,
+    options.output ?? loaded.config.output,
+    artifact,
+  );
+
+  if (result.targetKind === 'file') {
+    info(`Generated: ${result.targetPath}`);
+  } else {
+    info(`Generated ${result.written.length} skill file(s) under ${result.targetPath}`);
+  }
 }
 
 export function registerGenerateCommand(program: Command): void {
   program
     .command('generate')
     .alias('gen')
-    .description('Generate a context file for an AI tool')
+    .description('Generate context files for an AI tool')
     .option('--format <format>', 'Output format override')
-    .option('--output <path>', 'Output file path')
+    .option('--output <path>', 'Output file or directory override')
     .option('--skills <ids>', 'Comma-separated skill IDs')
     .option('--no-examples', 'Exclude code examples')
     .option('--no-antipatterns', 'Exclude anti-patterns')

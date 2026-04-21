@@ -24,8 +24,9 @@ export function resolveBundledSchemaPath(fileName: string): string {
   return path.join(packageRoot, 'schema', fileName);
 }
 
-export function resolveBundledTemplatePath(format: string): string {
-  return path.join(packageRoot, 'templates', `${format}.hbs`);
+export function resolveBundledTemplatePath(format: string, variant?: string): string {
+  const basename = variant === undefined ? format : `${format}.${variant}`;
+  return path.join(packageRoot, 'templates', `${basename}.hbs`);
 }
 
 export function resolveProjectRelativePath(rootDir: string, relativePath: string): string {

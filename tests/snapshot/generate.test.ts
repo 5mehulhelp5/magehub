@@ -1,10 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { renderGeneratedOutput } from '../../src/core/renderer.js';
+import { renderArtifact } from '../../src/core/renderer.js';
 import { clearSchemaValidatorCache } from '../../src/core/schema-validator.js';
-import type { Skill } from '../../src/types/skill.js';
 import type { OutputFormat } from '../../src/types/config.js';
-import { PROJECT_ROOT } from '../helpers/fixture.js';
+import type { Skill } from '../../src/types/skill.js';
 
 function makeSkill(overrides: Partial<Skill> = {}): Skill {
   return {
@@ -89,15 +88,22 @@ const twoSkills: Skill[] = [
   },
 ];
 
-const allFormats: OutputFormat[] = [
-  'claude',
-  'opencode',
-  'cursor',
-  'codex',
-  'qoder',
-  'trae',
-  'markdown',
-];
+const perSkillFormats: OutputFormat[] = ['claude', 'opencode', 'trae'];
+const singleFileFormats: OutputFormat[] = ['cursor', 'codex', 'qoder', 'markdown'];
+
+async function snapshotFor(
+  skills: Skill[],
+  format: OutputFormat,
+  options: { includeExamples: boolean; includeAntipatterns: boolean },
+): Promise<string> {
+  const artifact = await renderArtifact(skills, { format, ...options });
+  if (artifact.kind === 'single-file') {
+    return artifact.content;
+  }
+  return artifact.files
+    .map((file) => `=== ${file.skillId} ===\n${file.content}`)
+    .join('\n\n');
+}
 
 describe('generate snapshot tests', () => {
   beforeEach(() => {
@@ -105,30 +111,24 @@ describe('generate snapshot tests', () => {
   });
 
   describe('single skill output', () => {
-    for (const format of allFormats) {
+    for (const format of [...perSkillFormats, ...singleFileFormats]) {
       it(`generates stable output for ${format} format`, async () => {
-        const output = await renderGeneratedOutput([makeSkill()], {
-          format,
+        const output = await snapshotFor([makeSkill()], format, {
           includeExamples: true,
           includeAntipatterns: true,
-          rootDir: PROJECT_ROOT,
         });
-
         expect(output).toMatchSnapshot();
       });
     }
   });
 
   describe('multi-skill output', () => {
-    for (const format of allFormats) {
+    for (const format of [...perSkillFormats, ...singleFileFormats]) {
       it(`generates stable multi-skill output for ${format} format`, async () => {
-        const output = await renderGeneratedOutput(twoSkills, {
-          format,
+        const output = await snapshotFor(twoSkills, format, {
           includeExamples: true,
           includeAntipatterns: true,
-          rootDir: PROJECT_ROOT,
         });
-
         expect(output).toMatchSnapshot();
       });
     }
@@ -136,138 +136,97 @@ describe('generate snapshot tests', () => {
 
   describe('option variations', () => {
     it('generates stable output with --no-examples (claude)', async () => {
-      const output = await renderGeneratedOutput([makeSkill()], {
-        format: 'claude',
+      const output = await snapshotFor([makeSkill()], 'claude', {
         includeExamples: false,
         includeAntipatterns: true,
-        rootDir: PROJECT_ROOT,
       });
-
       expect(output).toMatchSnapshot();
       expect(output).not.toContain('### Examples');
     });
 
     it('generates stable output with --no-antipatterns (claude)', async () => {
-      const output = await renderGeneratedOutput([makeSkill()], {
-        format: 'claude',
+      const output = await snapshotFor([makeSkill()], 'claude', {
         includeExamples: true,
         includeAntipatterns: false,
-        rootDir: PROJECT_ROOT,
       });
-
       expect(output).toMatchSnapshot();
       expect(output).not.toContain('### Anti-patterns');
     });
 
     it('generates stable output with both options disabled (claude)', async () => {
-      const output = await renderGeneratedOutput([makeSkill()], {
-        format: 'claude',
+      const output = await snapshotFor([makeSkill()], 'claude', {
         includeExamples: false,
         includeAntipatterns: false,
-        rootDir: PROJECT_ROOT,
       });
-
       expect(output).toMatchSnapshot();
       expect(output).not.toContain('### Examples');
       expect(output).not.toContain('### Anti-patterns');
     });
 
     it('generates stable output with both options disabled (cursor)', async () => {
-      const output = await renderGeneratedOutput(twoSkills, {
-        format: 'cursor',
+      const output = await snapshotFor(twoSkills, 'cursor', {
         includeExamples: false,
         includeAntipatterns: false,
-        rootDir: PROJECT_ROOT,
       });
-
       expect(output).toMatchSnapshot();
     });
   });
 
   describe('format-specific structure', () => {
-    it('claude format has MageHub Context header', async () => {
-      const output = await renderGeneratedOutput([makeSkill()], {
+    it('claude per-skill file has frontmatter and body', async () => {
+      const artifact = await renderArtifact([makeSkill()], {
         format: 'claude',
         includeExamples: true,
         includeAntipatterns: true,
-        rootDir: PROJECT_ROOT,
       });
-
-      expect(output).toContain('# MageHub Context');
-      expect(output).toContain('Auto-generated by MageHub');
+      expect(artifact.kind).toBe('per-skill-file');
+      if (artifact.kind !== 'per-skill-file') return;
+      const content = artifact.files[0].content;
+      expect(content).toMatch(/^---\nname: module-plugin\ndescription: /);
+      expect(content).toContain('# Plugin Development');
     });
 
-    it('codex format has Agent Instructions header', async () => {
-      const output = await renderGeneratedOutput([makeSkill()], {
-        format: 'codex',
-        includeExamples: true,
-        includeAntipatterns: true,
-        rootDir: PROJECT_ROOT,
-      });
-
-      expect(output).toContain('# MageHub — Magento 2 Agent Instructions');
-    });
-
-    it('cursor format has frontmatter', async () => {
-      const output = await renderGeneratedOutput([makeSkill()], {
-        format: 'cursor',
-        includeExamples: true,
-        includeAntipatterns: true,
-        rootDir: PROJECT_ROOT,
-      });
-
-      expect(output).toContain('---');
-      expect(output).toContain('description: MageHub');
-      expect(output).toContain('alwaysApply: true');
-    });
-
-    it('qoder format has frontmatter', async () => {
-      const output = await renderGeneratedOutput([makeSkill()], {
-        format: 'qoder',
-        includeExamples: true,
-        includeAntipatterns: true,
-        rootDir: PROJECT_ROOT,
-      });
-
-      expect(output).toContain('---');
-      expect(output).toContain('name: MageHub');
-      expect(output).toContain('type: context');
-    });
-
-    it('trae format has skill summary list', async () => {
-      const output = await renderGeneratedOutput(twoSkills, {
-        format: 'trae',
-        includeExamples: true,
-        includeAntipatterns: true,
-        rootDir: PROJECT_ROOT,
-      });
-
-      expect(output).toContain('## Skill Summary');
-      expect(output).toContain('Plugin Development (module-plugin)');
-      expect(output).toContain('PHPUnit Testing (testing-phpunit)');
-    });
-
-    it('opencode format has Skill Pack header', async () => {
-      const output = await renderGeneratedOutput([makeSkill()], {
+    it('opencode per-skill file has frontmatter', async () => {
+      const artifact = await renderArtifact([makeSkill()], {
         format: 'opencode',
         includeExamples: true,
         includeAntipatterns: true,
-        rootDir: PROJECT_ROOT,
       });
+      if (artifact.kind !== 'per-skill-file') {
+        throw new Error('expected per-skill-file');
+      }
+      expect(artifact.files[0].content).toContain('name: module-plugin');
+    });
 
-      expect(output).toContain('# MageHub Skill Pack');
+    it('codex format has Agent Instructions header', async () => {
+      const artifact = await renderArtifact([makeSkill()], {
+        format: 'codex',
+        includeExamples: true,
+        includeAntipatterns: true,
+      });
+      if (artifact.kind !== 'single-file') throw new Error('expected single-file');
+      expect(artifact.content).toContain('# MageHub — Magento 2 Agent Instructions');
+    });
+
+    it('cursor format has frontmatter', async () => {
+      const artifact = await renderArtifact([makeSkill()], {
+        format: 'cursor',
+        includeExamples: true,
+        includeAntipatterns: true,
+      });
+      if (artifact.kind !== 'single-file') throw new Error('expected single-file');
+      expect(artifact.content).toContain('description: MageHub');
+      expect(artifact.content).toContain('alwaysApply: true');
     });
 
     it('markdown format has generic header', async () => {
-      const output = await renderGeneratedOutput([makeSkill()], {
+      const artifact = await renderArtifact([makeSkill()], {
         format: 'markdown',
         includeExamples: true,
         includeAntipatterns: true,
-        rootDir: PROJECT_ROOT,
       });
-
-      expect(output).toContain('# MageHub');
-      expect(output).toContain('Generated skills:');
+      if (artifact.kind !== 'single-file') throw new Error('expected single-file');
+      expect(artifact.content).toContain('# MageHub');
     });
   });
 });

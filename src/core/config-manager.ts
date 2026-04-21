@@ -1,9 +1,9 @@
 import { readFile, writeFile } from 'node:fs/promises';
-import path from 'node:path';
 
 import YAML from 'yaml';
 
-import type { MageHubConfig } from '../types/config.js';
+import type { MageHubConfig, OutputFormat } from '../types/config.js';
+import { detectFormat } from './formats.js';
 import { createMageHubPaths } from './paths.js';
 import { isPathInsideProject, resolveProjectRelativePath } from './runtime-assets.js';
 import { validateConfigSchema } from './schema-validator.js';
@@ -13,28 +13,19 @@ export interface ConfigLoadResult {
   filePath: string;
 }
 
-export function createDefaultConfig(): MageHubConfig {
+export function createDefaultConfig(format: OutputFormat = 'claude'): MageHubConfig {
   return {
     version: '1',
     skills: [],
-    format: 'claude',
+    format,
     include_examples: true,
     include_antipatterns: true,
   };
 }
 
-export function resolveOutputPath(rootDir: string, format: NonNullable<MageHubConfig['format']>): string {
-  const defaults: Record<NonNullable<MageHubConfig['format']>, string> = {
-    claude: 'CLAUDE.md',
-    opencode: path.join('.opencode', 'skills', 'magehub.md'),
-    cursor: '.cursorrules',
-    codex: 'AGENTS.md',
-    qoder: path.join('.qoder', 'context.md'),
-    trae: path.join('.trae', 'rules', 'magehub.md'),
-    markdown: 'MAGEHUB.md',
-  };
-
-  return path.join(rootDir, defaults[format]);
+export async function createBootstrapConfig(rootDir: string): Promise<MageHubConfig> {
+  const format = await detectFormat(rootDir);
+  return createDefaultConfig(format);
 }
 
 export async function loadConfig(rootDir: string): Promise<ConfigLoadResult> {

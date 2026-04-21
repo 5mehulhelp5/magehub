@@ -1,6 +1,5 @@
 version: "1"
 skills:
-  - module-plugin
   - module-scaffold
   - module-di
   - module-setup

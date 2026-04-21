@@ -1,51 +1,15 @@
-import { readFile, writeFile } from 'node:fs/promises';
-import path from 'node:path';
-
 import type { Command } from 'commander';
 
 import {
-  createDefaultConfig,
+  createBootstrapConfig,
   loadConfig,
-  resolveOutputPath,
   saveConfig,
 } from '../../core/config-manager.js';
+import { resolveOutputTarget } from '../../core/formats.js';
+import { ensureGitignoreEntry } from '../../core/gitignore.js';
 import { CliError } from '../../utils/cli-error.js';
-import { pathExists } from '../../utils/fs.js';
 import { info } from '../../utils/logger.js';
 import { parseOutputFormat } from '../../utils/validation.js';
-
-const GITIGNORE_HEADER = '# MageHub generated output';
-
-async function updateGitignore(
-  rootDir: string,
-  outputPath: string,
-): Promise<void> {
-  const gitignorePath = path.join(rootDir, '.gitignore');
-  const exists = await pathExists(gitignorePath);
-  const relativePath = path.relative(rootDir, outputPath);
-
-  if (exists) {
-    const content = await readFile(gitignorePath, 'utf8');
-    const lines = content.split('\n').map((l) => l.trim());
-    if (lines.includes(relativePath)) {
-      return;
-    }
-    const separator = content.endsWith('\n') ? '\n' : '\n\n';
-    await writeFile(
-      gitignorePath,
-      `${content}${separator}${GITIGNORE_HEADER}\n${relativePath}\n`,
-      'utf8',
-    );
-  } else {
-    await writeFile(
-      gitignorePath,
-      `${GITIGNORE_HEADER}\n${relativePath}\n`,
-      'utf8',
-    );
-  }
-
-  info(`Updated .gitignore with ${relativePath}`);
-}
 
 export async function runSetupInitCommand(
   options: { format?: string; gitignore?: boolean },
@@ -58,7 +22,8 @@ export async function runSetupInitCommand(
       if (
         error instanceof Error &&
         'code' in error &&
-        (error as NodeJS.ErrnoException).code === 'ENOENT'
+        typeof error.code === 'string' &&
+        error.code === 'ENOENT'
       ) {
         return undefined;
       }
@@ -75,25 +40,33 @@ export async function runSetupInitCommand(
     throw new CliError('.magehub.yaml already exists', 2);
   }
 
-  const config = createDefaultConfig();
+  const config = await createBootstrapConfig(effectiveRootDir);
   config.format = parseOutputFormat(options.format, config.format ?? 'claude');
 
   await saveConfig(effectiveRootDir, config);
   info('Created .magehub.yaml');
 
   if (options.gitignore !== false) {
-    const outputPath = resolveOutputPath(effectiveRootDir, config.format);
-    await updateGitignore(effectiveRootDir, outputPath);
+    const target = resolveOutputTarget(effectiveRootDir, config.format);
+    const added = await ensureGitignoreEntry(
+      effectiveRootDir,
+      target.path,
+      target.kind,
+    );
+    if (added) {
+      const relative = target.path.slice(effectiveRootDir.length + 1);
+      info(`Updated .gitignore with ${relative}${target.kind === 'directory' ? '/' : ''}`);
+    }
   }
 
-  info('MageHub initialized successfully!');
+  info('MageHub initialized. Run `magehub skill:install <id>` to add skills.');
 }
 
 export function registerSetupInitCommand(program: Command): void {
   program
     .command('setup:init')
     .alias('init')
-    .description('Initialize MageHub in the current project')
+    .description('Initialize MageHub in the current project (optional — skill:install auto-bootstraps)')
     .option('--format <format>', 'Default output format')
     .option('--no-gitignore', 'Skip updating .gitignore')
     .action(async (options: { format?: string; gitignore?: boolean }) =>

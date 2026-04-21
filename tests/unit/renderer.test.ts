@@ -1,15 +1,47 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
+  renderArtifact,
   renderSkillListTable,
   renderSkillSearchResults,
   renderSkillDetail,
   renderConfig,
-  renderGeneratedOutput,
+  type PerSkillArtifact,
+  type SingleFileArtifact,
 } from '../../src/core/renderer.js';
 import { clearSchemaValidatorCache } from '../../src/core/schema-validator.js';
+import type { OutputFormat } from '../../src/types/config.js';
 import type { Skill } from '../../src/types/skill.js';
-import { PROJECT_ROOT } from '../helpers/fixture.js';
+
+async function renderPerSkill(
+  skills: Skill[],
+  options: {
+    format: OutputFormat;
+    includeExamples: boolean;
+    includeAntipatterns: boolean;
+  },
+): Promise<PerSkillArtifact> {
+  const artifact = await renderArtifact(skills, options);
+  if (artifact.kind !== 'per-skill-file') {
+    throw new Error(`Expected per-skill artifact for ${options.format}`);
+  }
+  return artifact;
+}
+
+async function renderSingle(
+  skills: Skill[],
+  options: {
+    format: OutputFormat;
+    includeExamples: boolean;
+    includeAntipatterns: boolean;
+  },
+): Promise<SingleFileArtifact> {
+  const artifact = await renderArtifact(skills, options);
+  if (artifact.kind !== 'single-file') {
+    throw new Error(`Expected single-file artifact for ${options.format}`);
+  }
+  return artifact;
+}
 
 function makeSkill(overrides: Partial<Skill> = {}): Skill {
   return {
@@ -177,91 +209,78 @@ describe('renderer', () => {
     });
   });
 
-  describe('renderGeneratedOutput', () => {
-    it('includes skill instructions', async () => {
-      const output = await renderGeneratedOutput([makeSkill()], {
+  describe('renderArtifact (per-skill-file)', () => {
+    it('produces one file per skill with frontmatter and body', async () => {
+      const artifact = await renderPerSkill([makeSkill()], {
         format: 'claude',
         includeExamples: true,
         includeAntipatterns: true,
-        rootDir: PROJECT_ROOT,
       });
 
-      expect(output).toContain('## Test Skill (test-skill)');
-      expect(output).toContain('Do something.');
+      expect(artifact.files).toHaveLength(1);
+      const file = artifact.files[0];
+      expect(file.skillId).toBe('test-skill');
+      expect(file.content).toContain('name: test-skill');
+      expect(file.content).toContain('description: A test skill');
+      expect(file.content).toContain('# Test Skill');
+      expect(file.content).toContain('Do something.');
     });
 
-    it('includes conventions', async () => {
-      const output = await renderGeneratedOutput([makeSkill()], {
+    it('includes conventions in per-skill body', async () => {
+      const artifact = await renderPerSkill([makeSkill()], {
         format: 'claude',
         includeExamples: true,
         includeAntipatterns: true,
-        rootDir: PROJECT_ROOT,
       });
 
-      expect(output).toContain('### Conventions');
-      expect(output).toContain('Be consistent');
+      expect(artifact.files[0].content).toContain('### Conventions');
+      expect(artifact.files[0].content).toContain('Be consistent');
     });
 
     it('includes examples when enabled', async () => {
-      const output = await renderGeneratedOutput([makeSkill()], {
+      const artifact = await renderPerSkill([makeSkill()], {
         format: 'claude',
         includeExamples: true,
         includeAntipatterns: true,
-        rootDir: PROJECT_ROOT,
       });
 
-      expect(output).toContain('### Examples');
-      expect(output).toContain('echo "hi"');
+      expect(artifact.files[0].content).toContain('### Examples');
+      expect(artifact.files[0].content).toContain('echo "hi"');
     });
 
     it('excludes examples when disabled', async () => {
-      const output = await renderGeneratedOutput([makeSkill()], {
+      const artifact = await renderPerSkill([makeSkill()], {
         format: 'claude',
         includeExamples: false,
         includeAntipatterns: true,
-        rootDir: PROJECT_ROOT,
       });
 
-      expect(output).not.toContain('### Examples');
-    });
-
-    it('includes anti-patterns when enabled', async () => {
-      const output = await renderGeneratedOutput([makeSkill()], {
-        format: 'claude',
-        includeExamples: true,
-        includeAntipatterns: true,
-        rootDir: PROJECT_ROOT,
-      });
-
-      expect(output).toContain('### Anti-patterns');
-      expect(output).toContain('Bad thing');
+      expect(artifact.files[0].content).not.toContain('### Examples');
     });
 
     it('excludes anti-patterns when disabled', async () => {
-      const output = await renderGeneratedOutput([makeSkill()], {
+      const artifact = await renderPerSkill([makeSkill()], {
         format: 'claude',
         includeExamples: true,
         includeAntipatterns: false,
-        rootDir: PROJECT_ROOT,
       });
 
-      expect(output).not.toContain('### Anti-patterns');
+      expect(artifact.files[0].content).not.toContain('### Anti-patterns');
     });
 
     it('includes references', async () => {
-      const output = await renderGeneratedOutput([makeSkill()], {
+      const artifact = await renderPerSkill([makeSkill()], {
         format: 'claude',
         includeExamples: true,
         includeAntipatterns: true,
-        rootDir: PROJECT_ROOT,
       });
 
-      expect(output).toContain('### References');
-      expect(output).toContain('[Docs](https://example.com)');
+      expect(artifact.files[0].content).toContain('### References');
+      expect(artifact.files[0].content).toContain('[Docs](https://example.com)');
     });
 
-    it('separates multiple skills with ---', async () => {
-      const output = await renderGeneratedOutput(
+    it('emits separate files for each skill', async () => {
+      const artifact = await renderPerSkill(
         [
           makeSkill({ id: 'first', name: 'First' }),
           makeSkill({ id: 'second', name: 'Second' }),
@@ -270,16 +289,17 @@ describe('renderer', () => {
           format: 'claude',
           includeExamples: true,
           includeAntipatterns: true,
-          rootDir: PROJECT_ROOT,
         },
       );
 
-      expect(output).toContain('## First (first)');
-      expect(output).toContain('---');
-      expect(output).toContain('## Second (second)');
+      expect(artifact.files).toHaveLength(2);
+      expect(artifact.files[0].skillId).toBe('first');
+      expect(artifact.files[1].skillId).toBe('second');
+      expect(artifact.files[0].content).toContain('# First');
+      expect(artifact.files[1].content).toContain('# Second');
     });
 
-    it('handles skill with no optional fields', async () => {
+    it('handles skills with no optional fields', async () => {
       const minimal: Skill = {
         id: 'minimal',
         name: 'Minimal',
@@ -289,18 +309,49 @@ describe('renderer', () => {
         instructions: '### Minimal\n\nJust instructions.',
       };
 
-      const output = await renderGeneratedOutput([minimal], {
+      const artifact = await renderPerSkill([minimal], {
         format: 'claude',
         includeExamples: true,
         includeAntipatterns: true,
-        rootDir: PROJECT_ROOT,
       });
 
-      expect(output).toContain('## Minimal (minimal)');
-      expect(output).not.toContain('### Conventions');
-      expect(output).not.toContain('### Examples');
-      expect(output).not.toContain('### Anti-patterns');
-      expect(output).not.toContain('### References');
+      const content = artifact.files[0].content;
+      expect(content).toContain('# Minimal');
+      expect(content).not.toContain('### Conventions');
+      expect(content).not.toContain('### Examples');
+      expect(content).not.toContain('### Anti-patterns');
+      expect(content).not.toContain('### References');
+    });
+  });
+
+  describe('renderArtifact (single-file)', () => {
+    it('concatenates skills into a single document for codex', async () => {
+      const artifact = await renderSingle(
+        [
+          makeSkill({ id: 'first', name: 'First' }),
+          makeSkill({ id: 'second', name: 'Second' }),
+        ],
+        {
+          format: 'codex',
+          includeExamples: true,
+          includeAntipatterns: true,
+        },
+      );
+
+      expect(artifact.content).toContain('## First (first)');
+      expect(artifact.content).toContain('## Second (second)');
+      expect(artifact.content).toContain('---');
+    });
+
+    it('renders cursor format with enabled skills listing', async () => {
+      const artifact = await renderSingle([makeSkill()], {
+        format: 'cursor',
+        includeExamples: true,
+        includeAntipatterns: true,
+      });
+
+      expect(artifact.content).toContain('test-skill');
+      expect(artifact.content).toContain('## Test Skill (test-skill)');
     });
   });
 });
