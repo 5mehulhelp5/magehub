@@ -3,7 +3,12 @@ import path from 'node:path';
 import type { Skill, SkillCategory } from '../types/skill.js';
 import { loadConfig, resolveCustomSkillsPath } from './config-manager.js';
 import { createMageHubPaths } from './paths.js';
-import { loadSkillsFromDirectories, type LoadedSkill } from './skill-loader.js';
+import { resolveBundledSkillsPath } from './runtime-assets.js';
+import {
+  listSkillFiles,
+  loadSkillsFromDirectories,
+  type LoadedSkill,
+} from './skill-loader.js';
 
 export interface SkillRegistryEntry extends LoadedSkill {}
 
@@ -67,7 +72,11 @@ export async function createSkillRegistry(
   rootDir: string,
 ): Promise<SkillRegistry> {
   const paths = createMageHubPaths(rootDir);
-  const skillDirs = [paths.skillsDir];
+  const localSkillFiles = await listSkillFiles(paths.skillsDir);
+  const skillDirs =
+    localSkillFiles.length > 0
+      ? [paths.skillsDir]
+      : [resolveBundledSkillsPath()];
   const loadedConfig = await loadConfig(rootDir).catch(() => undefined);
 
   if (loadedConfig?.config.custom_skills_path !== undefined) {
