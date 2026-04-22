@@ -30,6 +30,10 @@ export function resolveBundledSchemaPath(fileName: string): string {
   return path.join(packageRoot, 'schema', fileName);
 }
 
+export function resolveBundledSkillsPath(): string {
+  return path.join(packageRoot, 'skills');
+}
+
 export function resolveBundledTemplatePath(
   format: string,
   variant?: string,
