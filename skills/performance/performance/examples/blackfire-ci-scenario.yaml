@@ -48,9 +48,9 @@ scenarios: |
         assert main.wall_time < 700ms
 
 tests:
-  "Pages should not trigger SQL errors":
+  'Pages should not trigger SQL errors':
     - assert metrics.sql.errors.count == 0
 
-  "No function should dominate CPU":
+  'No function should dominate CPU':
     - assert main.peak_memory < 500MB
     - assert metrics.magento2.all.collections_load.time < 300ms

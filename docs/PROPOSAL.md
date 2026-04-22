@@ -247,7 +247,7 @@ magehub skill:update
 | 6   | `api-graphql-resolver`      | api         | Modern headless/PWA standard API; unique resolver patterns                    |
 | 7   | `hyva-module-compatibility` | hyva        | #1 Hyva ecosystem pain point: Luma-to-Hyva conversion                         |
 | 8   | `testing-phpunit`           | testing     | Quality foundation; Magento's test setup is unique                            |
-| 9   | `performance`       | performance | #1 performance lever; incorrect caching causes both perf and correctness bugs |
+| 9   | `performance`               | performance | #1 performance lever; incorrect caching causes both perf and correctness bugs |
 | 10  | `standards-coding`          | standards   | Affects every file; baseline for all other skills                             |
 
 ### 3.1 Module Development (`module`)
@@ -706,7 +706,7 @@ MFTF is Adobe/Magento's official end-to-end (E2E) testing framework for testing 
 
 | Skill ID                  | Name                  | Description                                 | Release  |
 | ------------------------- | --------------------- | ------------------------------------------- | -------- |
-| `performance`     | Caching Strategies    | FPC, block cache, config cache optimization | **v1.0** |
+| `performance`             | Caching Strategies    | FPC, block cache, config cache optimization | **v1.0** |
 | `performance-audit`       | Performance Audit     | Identify and diagnose performance issues    | v1.1     |
 | `performance-indexer`     | Indexer Optimization  | Custom indexers and reindex strategies      | v1.1     |
 | `performance-database`    | Database Optimization | Query optimization, indexing                | v1.1     |
