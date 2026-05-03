@@ -11,13 +11,14 @@ import { resolveOutputTarget } from '../../core/formats.js';
 import {
   createDefaultGlobalConfig,
   getGlobalConfigDir,
+  getQoderGlobalSkillsDir,
   loadGlobalConfig,
   resolveGlobalOutputRoot,
   saveGlobalConfig,
 } from '../../core/global-config.js';
-import { renderArtifact } from '../../core/renderer.js';
+import { renderArtifact, renderPerSkillArtifact } from '../../core/renderer.js';
 import { createSkillRegistry } from '../../core/skill-registry.js';
-import { writeArtifact } from '../../core/writer.js';
+import { writeArtifact, writeSkillDirectories } from '../../core/writer.js';
 import type { MageHubConfig } from '../../types/config.js';
 import { CliError } from '../../utils/cli-error.js';
 import { info } from '../../utils/logger.js';
@@ -47,22 +48,12 @@ async function loadOrBootstrapConfig(
   });
 
   if (loaded !== undefined) {
-    if (formatOverride !== undefined) {
-      loaded.config.format = parseOutputFormat(
-        formatOverride,
-        loaded.config.format ?? 'claude',
-      );
-    }
+    loaded.config.format = parseOutputFormat(formatOverride, 'claude');
     return { config: loaded.config, bootstrapped: false };
   }
 
   const bootstrap = await createBootstrapConfig(rootDir);
-  if (formatOverride !== undefined) {
-    bootstrap.format = parseOutputFormat(
-      formatOverride,
-      bootstrap.format ?? 'claude',
-    );
-  }
+  bootstrap.format = parseOutputFormat(formatOverride, 'claude');
   return { config: bootstrap, bootstrapped: true };
 }
 
@@ -71,19 +62,13 @@ async function runGlobalInstall(
   options: {
     category?: string;
     format?: string;
+    write?: boolean;
   },
 ): Promise<void> {
-  if (options.format === undefined) {
-    throw new CliError(
-      '--format is required for global install (e.g. --format claude)',
-      1,
-    );
-  }
-
-  const format = parseOutputFormat(options.format, 'claude');
   const globalConfigDir = getGlobalConfigDir();
 
   let config = await loadGlobalConfig();
+  const format = parseOutputFormat(options.format, 'claude');
   const isNew = config === undefined;
   if (isNew) {
     config = createDefaultGlobalConfig(format);
@@ -124,6 +109,10 @@ async function runGlobalInstall(
     info(`${previous.has(skillId) ? '•' : '✓'} ${skillId}`);
   }
 
+  if (options.write === false) {
+    return;
+  }
+
   const targetSkills = config.skills.map((skillId) => {
     const skill = registry.getById(skillId);
     if (skill === undefined) {
@@ -132,11 +121,26 @@ async function runGlobalInstall(
     return skill;
   });
 
-  const artifact = await renderArtifact(targetSkills, {
+  const renderOptions = {
     format,
     includeExamples: config.include_examples ?? true,
     includeAntipatterns: config.include_antipatterns ?? true,
-  });
+  };
+
+  if (format === 'qoder') {
+    const artifact = await renderPerSkillArtifact(targetSkills, renderOptions);
+    const result = await writeSkillDirectories(
+      getQoderGlobalSkillsDir(),
+      artifact,
+    );
+
+    info(
+      `Generated ${result.written.length} skill file(s) under ${result.targetPath}`,
+    );
+    return;
+  }
+
+  const artifact = await renderArtifact(targetSkills, renderOptions);
 
   const outputRoot = resolveGlobalOutputRoot(format);
   const result = await writeArtifact(outputRoot, format, undefined, artifact);
@@ -158,10 +162,15 @@ export async function runSkillInstallCommand(
     write?: boolean;
     gitExclude?: boolean;
     global?: boolean;
+    current?: boolean;
   },
   rootDir?: string,
 ): Promise<void> {
-  if (options.global) {
+  if (options.global && options.current) {
+    throw new CliError('Cannot combine --global and --current.', 1);
+  }
+
+  if (!options.current) {
     return runGlobalInstall(skillIds, options);
   }
 
@@ -261,11 +270,20 @@ export function registerSkillInstallCommand(program: Command): void {
   program
     .command('skill:install')
     .alias('install')
-    .description('Install skills into .magehub.yaml and render output files')
+    .description(
+      'Install skills globally by default, or into the current project with --current',
+    )
     .argument('[skillIds...]', 'Skill identifiers to install')
     .option('--category <category>', 'Install all skills from a category')
-    .option('--format <format>', 'Override output format (persisted to config)')
-    .option('-g, --global', 'Install skill globally (~/.magehub/config.yaml)')
+    .option('--format <format>', 'Output format (default: claude)')
+    .option(
+      '-g, --global',
+      'Install skill globally (~/.magehub/config.yaml; default)',
+    )
+    .option(
+      '-c, --current',
+      'Install skill into the current project .magehub.yaml',
+    )
     .option('--no-write', 'Skip writing rendered output files')
     .option('--no-git-exclude', 'Skip updating .git/info/exclude')
     .action(
@@ -277,6 +295,7 @@ export function registerSkillInstallCommand(program: Command): void {
           write?: boolean;
           gitExclude?: boolean;
           global?: boolean;
+          current?: boolean;
         },
       ) => runSkillInstallCommand(skillIds, options),
     );

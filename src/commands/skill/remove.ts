@@ -9,13 +9,18 @@ import {
 } from '../../core/config-manager.js';
 import { getFormatMetadata, resolveOutputTarget } from '../../core/formats.js';
 import {
+  getQoderGlobalSkillsDir,
   loadGlobalConfig,
   resolveGlobalOutputRoot,
   saveGlobalConfig,
 } from '../../core/global-config.js';
 import { renderArtifact } from '../../core/renderer.js';
 import { createSkillRegistry } from '../../core/skill-registry.js';
-import { removePerSkillFiles, writeArtifact } from '../../core/writer.js';
+import {
+  removePerSkillFiles,
+  removeSkillDirectories,
+  writeArtifact,
+} from '../../core/writer.js';
 import { CliError } from '../../utils/cli-error.js';
 import { pathExists } from '../../utils/fs.js';
 import { info } from '../../utils/logger.js';
@@ -27,7 +32,7 @@ async function runGlobalRemove(
   const config = await loadGlobalConfig();
   if (config === undefined) {
     throw new CliError(
-      'No global config found. Run `magehub skill:install -g <id>` first.',
+      'No global config found. Run `magehub skill:install <id>` first.',
       2,
     );
   }
@@ -54,6 +59,17 @@ async function runGlobalRemove(
   }
 
   if (options.write === false) {
+    return;
+  }
+
+  if (format === 'qoder') {
+    const removed = await removeSkillDirectories(
+      getQoderGlobalSkillsDir(),
+      skillIds,
+    );
+    for (const target of removed) {
+      info(`Removed ${target}`);
+    }
     return;
   }
 
@@ -116,7 +132,7 @@ export async function runSkillRemoveCommand(
   const effectiveRootDir = rootDir ?? process.cwd();
   const loaded = await loadConfig(effectiveRootDir).catch(() => {
     throw new CliError(
-      'Missing or invalid .magehub.yaml. Run `magehub skill:install <id>` first.',
+      'Missing or invalid .magehub.yaml. Run `magehub skill:install --current <id>` first.',
       2,
     );
   });

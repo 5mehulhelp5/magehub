@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   loadConfig,
   resolveCustomSkillsPath,
+  saveConfig,
   validateConfigFile,
 } from '../src/core/config-manager.js';
 import { clearSchemaValidatorCache } from '../src/core/schema-validator.js';
@@ -279,13 +280,61 @@ describe('core services and commands', () => {
   it('installs and removes skills in config', async () => {
     await runSkillInstallCommand(
       ['module-plugin'],
-      { write: false, gitExclude: false },
+      { current: true, write: false, gitExclude: false },
       rootDir,
     );
     await runSkillRemoveCommand(['module-plugin'], { write: false }, rootDir);
 
     const loaded = await loadConfig(rootDir);
     expect(loaded.config.skills).toEqual([]);
+  });
+
+  it('defaults current project installs to claude when format is omitted', async () => {
+    const loaded = await loadConfig(rootDir);
+    loaded.config.format = 'qoder';
+    await saveConfig(rootDir, loaded.config);
+
+    await runSkillInstallCommand(
+      ['module-plugin'],
+      { current: true, write: false, gitExclude: false },
+      rootDir,
+    );
+
+    const updated = await loadConfig(rootDir);
+    expect(updated.config.format).toBe('claude');
+  });
+
+  it('installs globally by default', async () => {
+    await runSkillInstallCommand(['performance'], { write: false }, rootDir);
+
+    const globalConfig = await readFile(
+      path.join(homeDir, '.magehub', 'config.yaml'),
+      'utf8',
+    );
+    const projectConfig = await loadConfig(rootDir);
+
+    expect(globalConfig).toContain('performance');
+    expect(globalConfig).toContain('format: claude');
+    expect(projectConfig.config.skills).toEqual(['module-plugin']);
+  });
+
+  it('defaults global installs to claude when format is omitted', async () => {
+    await runSkillInstallCommand(['module-plugin'], {
+      global: true,
+      format: 'qoder',
+      write: false,
+    });
+
+    await runSkillInstallCommand(['performance'], { write: false }, rootDir);
+
+    const globalConfig = await readFile(
+      path.join(homeDir, '.magehub', 'config.yaml'),
+      'utf8',
+    );
+
+    expect(globalConfig).toContain('module-plugin');
+    expect(globalConfig).toContain('performance');
+    expect(globalConfig).toContain('format: claude');
   });
 
   it('installs and removes global codex output under Codex home', async () => {
@@ -320,6 +369,50 @@ describe('core services and commands', () => {
         delete process.env.CODEX_HOME;
       } else {
         process.env.CODEX_HOME = originalCodexHome;
+      }
+    }
+  });
+
+  it('installs and removes global qoder skills under Qoder skills dir', async () => {
+    const originalQoderHome = process.env.QODER_HOME;
+    const qoderHomeDir = path.join(homeDir, '.custom-qoder');
+
+    process.env.QODER_HOME = qoderHomeDir;
+
+    try {
+      await runSkillInstallCommand(['module-plugin'], {
+        global: true,
+        format: 'qoder',
+      });
+
+      const qoderSkillPath = path.join(
+        qoderHomeDir,
+        'skills',
+        'module-plugin',
+        'SKILL.md',
+      );
+      const legacyContextPath = path.join(homeDir, '.qoder', 'context.md');
+      const globalConfigPath = path.join(homeDir, '.magehub', 'config.yaml');
+
+      await expect(readFile(qoderSkillPath, 'utf8')).resolves.toContain(
+        'name: module-plugin',
+      );
+      await expect(readFile(qoderSkillPath, 'utf8')).resolves.toContain(
+        'Plugin Development',
+      );
+      await expect(readFile(globalConfigPath, 'utf8')).resolves.toContain(
+        'format: qoder',
+      );
+      await expect(readFile(legacyContextPath, 'utf8')).rejects.toThrow();
+
+      await runSkillRemoveCommand(['module-plugin'], { global: true });
+
+      await expect(readFile(qoderSkillPath, 'utf8')).rejects.toThrow();
+    } finally {
+      if (originalQoderHome === undefined) {
+        delete process.env.QODER_HOME;
+      } else {
+        process.env.QODER_HOME = originalQoderHome;
       }
     }
   });
