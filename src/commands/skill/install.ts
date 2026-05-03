@@ -1,5 +1,4 @@
 import type { Command } from 'commander';
-import os from 'node:os';
 
 import {
   createBootstrapConfig,
@@ -13,6 +12,7 @@ import {
   createDefaultGlobalConfig,
   getGlobalConfigDir,
   loadGlobalConfig,
+  resolveGlobalOutputRoot,
   saveGlobalConfig,
 } from '../../core/global-config.js';
 import { renderArtifact } from '../../core/renderer.js';
@@ -138,8 +138,8 @@ async function runGlobalInstall(
     includeAntipatterns: config.include_antipatterns ?? true,
   });
 
-  const homeDir = os.homedir();
-  const result = await writeArtifact(homeDir, format, undefined, artifact);
+  const outputRoot = resolveGlobalOutputRoot(format);
+  const result = await writeArtifact(outputRoot, format, undefined, artifact);
 
   if (result.targetKind === 'file') {
     info(`Generated: ${result.targetPath}`);

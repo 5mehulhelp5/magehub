@@ -6,10 +6,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
   createDefaultGlobalConfig,
+  getCodexHomeDir,
   getGlobalConfigDir,
   getGlobalConfigPath,
   getGlobalSkillsDir,
   loadGlobalConfig,
+  resolveGlobalOutputRoot,
   resolveGlobalCustomSkillsPath,
   saveGlobalConfig,
 } from '../../src/core/global-config.js';
@@ -17,6 +19,7 @@ import { clearSchemaValidatorCache } from '../../src/core/schema-validator.js';
 
 const globalConfigPath = getGlobalConfigPath();
 let savedConfig: string | undefined;
+let savedCodexHome: string | undefined;
 
 async function backupGlobalConfig(): Promise<void> {
   try {
@@ -45,10 +48,16 @@ async function restoreGlobalConfig(): Promise<void> {
 describe('global-config', () => {
   beforeEach(async () => {
     clearSchemaValidatorCache();
+    savedCodexHome = process.env.CODEX_HOME;
     await backupGlobalConfig();
   });
 
   afterEach(async () => {
+    if (savedCodexHome === undefined) {
+      delete process.env.CODEX_HOME;
+    } else {
+      process.env.CODEX_HOME = savedCodexHome;
+    }
     await restoreGlobalConfig();
   });
 
@@ -72,6 +81,34 @@ describe('global-config', () => {
       expect(getGlobalSkillsDir()).toBe(
         path.join(os.homedir(), '.magehub', 'skills'),
       );
+    });
+  });
+
+  describe('getCodexHomeDir', () => {
+    it('returns ~/.codex when CODEX_HOME is not set', () => {
+      delete process.env.CODEX_HOME;
+
+      expect(getCodexHomeDir()).toBe(path.join(os.homedir(), '.codex'));
+    });
+
+    it('honors CODEX_HOME when set', () => {
+      process.env.CODEX_HOME = 'custom-codex-home';
+
+      expect(getCodexHomeDir()).toBe(path.resolve('custom-codex-home'));
+    });
+  });
+
+  describe('resolveGlobalOutputRoot', () => {
+    it('uses Codex home for global codex output', () => {
+      process.env.CODEX_HOME = '/tmp/magehub-codex-home';
+
+      expect(resolveGlobalOutputRoot('codex')).toBe('/tmp/magehub-codex-home');
+    });
+
+    it('uses the user home for non-codex global output', () => {
+      process.env.CODEX_HOME = '/tmp/magehub-codex-home';
+
+      expect(resolveGlobalOutputRoot('claude')).toBe(os.homedir());
     });
   });
 

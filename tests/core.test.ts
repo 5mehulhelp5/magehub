@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -178,16 +178,22 @@ async function setupFixtureRepo(): Promise<string> {
 
 describe('core services and commands', () => {
   let rootDir: string;
+  let homeDir: string;
+  let homeSpy: ReturnType<typeof vi.spyOn>;
   let logSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
     clearSchemaValidatorCache();
     rootDir = await setupFixtureRepo();
+    homeDir = await mkdtemp(path.join(os.tmpdir(), 'magehub-home-'));
+    homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(homeDir);
     logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     logSpy.mockRestore();
+    homeSpy.mockRestore();
+    await rm(homeDir, { recursive: true, force: true });
   });
 
   it('loads and indexes bundled skills', async () => {
@@ -280,6 +286,42 @@ describe('core services and commands', () => {
 
     const loaded = await loadConfig(rootDir);
     expect(loaded.config.skills).toEqual([]);
+  });
+
+  it('installs and removes global codex output under Codex home', async () => {
+    const originalCodexHome = process.env.CODEX_HOME;
+    const codexHomeDir = path.join(homeDir, '.custom-codex');
+
+    process.env.CODEX_HOME = codexHomeDir;
+
+    try {
+      await runSkillInstallCommand(['module-plugin'], {
+        global: true,
+        format: 'codex',
+      });
+
+      const codexAgentsPath = path.join(codexHomeDir, 'AGENTS.md');
+      const misplacedAgentsPath = path.join(homeDir, 'AGENTS.md');
+      const globalConfigPath = path.join(homeDir, '.magehub', 'config.yaml');
+
+      await expect(readFile(codexAgentsPath, 'utf8')).resolves.toContain(
+        'Plugin Development',
+      );
+      await expect(readFile(globalConfigPath, 'utf8')).resolves.toContain(
+        'format: codex',
+      );
+      await expect(readFile(misplacedAgentsPath, 'utf8')).rejects.toThrow();
+
+      await runSkillRemoveCommand(['module-plugin'], { global: true });
+
+      await expect(readFile(codexAgentsPath, 'utf8')).rejects.toThrow();
+    } finally {
+      if (originalCodexHome === undefined) {
+        delete process.env.CODEX_HOME;
+      } else {
+        process.env.CODEX_HOME = originalCodexHome;
+      }
+    }
   });
 
   it('rejects removing skills that are not installed', async () => {

@@ -1,7 +1,6 @@
 import type { Command } from 'commander';
 
 import { rm } from 'node:fs/promises';
-import os from 'node:os';
 
 import {
   loadConfig,
@@ -11,6 +10,7 @@ import {
 import { getFormatMetadata, resolveOutputTarget } from '../../core/formats.js';
 import {
   loadGlobalConfig,
+  resolveGlobalOutputRoot,
   saveGlobalConfig,
 } from '../../core/global-config.js';
 import { renderArtifact } from '../../core/renderer.js';
@@ -57,11 +57,11 @@ async function runGlobalRemove(
     return;
   }
 
-  const homeDir = os.homedir();
+  const outputRoot = resolveGlobalOutputRoot(format);
   const metadata = getFormatMetadata(format);
 
   if (config.skills.length === 0) {
-    const target = resolveOutputTarget(homeDir, format);
+    const target = resolveOutputTarget(outputRoot, format);
     if (target.kind === 'file' && (await pathExists(target.path))) {
       await rm(target.path);
       info(`Removed ${target.path}`);
@@ -71,7 +71,7 @@ async function runGlobalRemove(
 
   if (metadata.strategy === 'per-skill-file') {
     const removed = await removePerSkillFiles(
-      homeDir,
+      outputRoot,
       format,
       undefined,
       skillIds,
@@ -100,7 +100,7 @@ async function runGlobalRemove(
     includeAntipatterns: config.include_antipatterns ?? true,
   });
 
-  const result = await writeArtifact(homeDir, format, undefined, artifact);
+  const result = await writeArtifact(outputRoot, format, undefined, artifact);
   info(`Regenerated: ${result.targetPath}`);
 }
 

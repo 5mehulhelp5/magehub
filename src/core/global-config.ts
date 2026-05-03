@@ -11,6 +11,7 @@ import { validateConfigSchema } from './schema-validator.js';
 
 const GLOBAL_DIR_NAME = '.magehub';
 const GLOBAL_CONFIG_FILE = 'config.yaml';
+const CODEX_HOME_DIR_NAME = '.codex';
 
 function getGlobalDirSegments(): string[] {
   return [os.homedir(), GLOBAL_DIR_NAME];
@@ -26,6 +27,23 @@ export function getGlobalConfigPath(): string {
 
 export function getGlobalSkillsDir(): string {
   return path.join(getGlobalConfigDir(), 'skills');
+}
+
+export function getCodexHomeDir(): string {
+  const configured = process.env.CODEX_HOME?.trim();
+  if (configured !== undefined && configured !== '') {
+    return path.resolve(configured);
+  }
+
+  return path.join(os.homedir(), CODEX_HOME_DIR_NAME);
+}
+
+export function resolveGlobalOutputRoot(format: OutputFormat): string {
+  if (format === 'codex') {
+    return getCodexHomeDir();
+  }
+
+  return os.homedir();
 }
 
 export function createDefaultGlobalConfig(
