@@ -48,7 +48,7 @@ function makeSkill(overrides: Partial<Skill> = {}): Skill {
         url: 'https://developer.adobe.com/commerce/php/development/components/plugins/',
       },
     ],
-    compatibility: ['claude', 'opencode', 'cursor', 'codex', 'qoder', 'trae'],
+    compatibility: ['claude', 'opencode', 'codex', 'qoder'],
     ...overrides,
   };
 }
@@ -84,12 +84,16 @@ const twoSkills: Skill[] = [
         url: 'https://developer.adobe.com/commerce/testing/guide/',
       },
     ],
-    compatibility: ['claude', 'opencode', 'cursor', 'codex', 'qoder', 'trae'],
+    compatibility: ['claude', 'opencode', 'codex', 'qoder'],
   },
 ];
 
-const perSkillFormats: OutputFormat[] = ['claude', 'opencode', 'trae'];
-const singleFileFormats: OutputFormat[] = ['cursor', 'codex', 'qoder'];
+const perSkillFormats: OutputFormat[] = [
+  'claude',
+  'opencode',
+  'codex',
+  'qoder',
+];
 
 async function snapshotFor(
   skills: Skill[],
@@ -111,7 +115,7 @@ describe('generate snapshot tests', () => {
   });
 
   describe('single skill output', () => {
-    for (const format of [...perSkillFormats, ...singleFileFormats]) {
+    for (const format of perSkillFormats) {
       it(`generates stable output for ${format} format`, async () => {
         const output = await snapshotFor([makeSkill()], format, {
           includeExamples: true,
@@ -123,7 +127,7 @@ describe('generate snapshot tests', () => {
   });
 
   describe('multi-skill output', () => {
-    for (const format of [...perSkillFormats, ...singleFileFormats]) {
+    for (const format of perSkillFormats) {
       it(`generates stable multi-skill output for ${format} format`, async () => {
         const output = await snapshotFor(twoSkills, format, {
           includeExamples: true,
@@ -162,14 +166,6 @@ describe('generate snapshot tests', () => {
       expect(output).not.toContain('### Examples');
       expect(output).not.toContain('### Anti-patterns');
     });
-
-    it('generates stable output with both options disabled (cursor)', async () => {
-      const output = await snapshotFor(twoSkills, 'cursor', {
-        includeExamples: false,
-        includeAntipatterns: false,
-      });
-      expect(output).toMatchSnapshot();
-    });
   });
 
   describe('format-specific structure', () => {
@@ -198,29 +194,16 @@ describe('generate snapshot tests', () => {
       expect(artifact.files[0].content).toContain('name: module-plugin');
     });
 
-    it('codex format has Agent Instructions header', async () => {
+    it('codex format produces per-skill files with frontmatter', async () => {
       const artifact = await renderArtifact([makeSkill()], {
         format: 'codex',
         includeExamples: true,
         includeAntipatterns: true,
       });
-      if (artifact.kind !== 'single-file')
-        throw new Error('expected single-file');
-      expect(artifact.content).toContain(
-        '# MageHub — Magento 2 Agent Instructions',
-      );
-    });
-
-    it('cursor format has frontmatter', async () => {
-      const artifact = await renderArtifact([makeSkill()], {
-        format: 'cursor',
-        includeExamples: true,
-        includeAntipatterns: true,
-      });
-      if (artifact.kind !== 'single-file')
-        throw new Error('expected single-file');
-      expect(artifact.content).toContain('description: MageHub');
-      expect(artifact.content).toContain('alwaysApply: true');
+      if (artifact.kind !== 'per-skill-file')
+        throw new Error('expected per-skill-file');
+      expect(artifact.files[0].content).toContain('name: module-plugin');
+      expect(artifact.files[0].content).toContain('# Plugin Development');
     });
   });
 });

@@ -162,7 +162,7 @@ async function setupFixtureRepo(): Promise<string> {
 
   await writeFile(
     path.join(rootDir, '.magehub.yaml'),
-    ['version: "1"', 'skills:', '  - module-plugin', 'format: claude'].join(
+    ['version: "1"', 'skills:', '  - id: module-plugin', 'format: claude'].join(
       '\n',
     ),
     'utf8',
@@ -227,7 +227,7 @@ describe('core services and commands', () => {
     expect(result.valid).toBe(true);
 
     const loaded = await loadConfig(rootDir);
-    expect(loaded.config.skills).toEqual(['module-plugin']);
+    expect(loaded.config.skills).toEqual([{ id: 'module-plugin' }]);
   });
 
   it('validates skill files and reports no warnings for ### headings', async () => {
@@ -315,7 +315,7 @@ describe('core services and commands', () => {
 
     expect(globalConfig).toContain('performance');
     expect(globalConfig).toContain('format: claude');
-    expect(projectConfig.config.skills).toEqual(['module-plugin']);
+    expect(projectConfig.config.skills).toEqual([{ id: 'module-plugin' }]);
   });
 
   it('defaults global installs to claude when format is omitted', async () => {
@@ -339,9 +339,8 @@ describe('core services and commands', () => {
 
   it('installs and removes global codex output under Codex home', async () => {
     const originalCodexHome = process.env.CODEX_HOME;
-    const codexHomeDir = path.join(homeDir, '.custom-codex');
 
-    process.env.CODEX_HOME = codexHomeDir;
+    process.env.CODEX_HOME = path.join(homeDir, '.custom-codex');
 
     try {
       await runSkillInstallCommand(['module-plugin'], {
@@ -349,21 +348,25 @@ describe('core services and commands', () => {
         format: 'codex',
       });
 
-      const codexAgentsPath = path.join(codexHomeDir, 'AGENTS.md');
-      const misplacedAgentsPath = path.join(homeDir, 'AGENTS.md');
+      const codexSkillPath = path.join(
+        homeDir,
+        '.codex',
+        'skills',
+        'module-plugin',
+        'SKILL.md',
+      );
       const globalConfigPath = path.join(homeDir, '.magehub', 'config.yaml');
 
-      await expect(readFile(codexAgentsPath, 'utf8')).resolves.toContain(
+      await expect(readFile(codexSkillPath, 'utf8')).resolves.toContain(
         'Plugin Development',
       );
       await expect(readFile(globalConfigPath, 'utf8')).resolves.toContain(
         'format: codex',
       );
-      await expect(readFile(misplacedAgentsPath, 'utf8')).rejects.toThrow();
 
       await runSkillRemoveCommand(['module-plugin'], { global: true });
 
-      await expect(readFile(codexAgentsPath, 'utf8')).rejects.toThrow();
+      await expect(readFile(codexSkillPath, 'utf8')).rejects.toThrow();
     } finally {
       if (originalCodexHome === undefined) {
         delete process.env.CODEX_HOME;
@@ -375,9 +378,8 @@ describe('core services and commands', () => {
 
   it('installs and removes global qoder skills under Qoder skills dir', async () => {
     const originalQoderHome = process.env.QODER_HOME;
-    const qoderHomeDir = path.join(homeDir, '.custom-qoder');
 
-    process.env.QODER_HOME = qoderHomeDir;
+    process.env.QODER_HOME = path.join(homeDir, '.custom-qoder');
 
     try {
       await runSkillInstallCommand(['module-plugin'], {
@@ -386,12 +388,12 @@ describe('core services and commands', () => {
       });
 
       const qoderSkillPath = path.join(
-        qoderHomeDir,
+        homeDir,
+        '.qoder',
         'skills',
         'module-plugin',
         'SKILL.md',
       );
-      const legacyContextPath = path.join(homeDir, '.qoder', 'context.md');
       const globalConfigPath = path.join(homeDir, '.magehub', 'config.yaml');
 
       await expect(readFile(qoderSkillPath, 'utf8')).resolves.toContain(
@@ -403,7 +405,6 @@ describe('core services and commands', () => {
       await expect(readFile(globalConfigPath, 'utf8')).resolves.toContain(
         'format: qoder',
       );
-      await expect(readFile(legacyContextPath, 'utf8')).rejects.toThrow();
 
       await runSkillRemoveCommand(['module-plugin'], { global: true });
 

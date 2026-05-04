@@ -34,25 +34,16 @@ import type { OutputFormat } from '../../src/types/config.js';
 import { PROJECT_ROOT } from '../helpers/fixture.js';
 import { parseFrontMatter } from '../helpers/front-matter.js';
 import {
-  assertCursorFrontMatter,
   assertFencedCodeBlocks,
   assertMagentoDomainTerms,
   assertNoUnresolvedPlaceholders,
-  assertQoderFrontMatter,
 } from '../helpers/output-validators.js';
 import {
   generateSmokeReport,
   type FormatResult,
 } from '../helpers/smoke-report.js';
 
-const ALL_FORMATS: OutputFormat[] = [
-  'claude',
-  'opencode',
-  'cursor',
-  'codex',
-  'qoder',
-  'trae',
-];
+const ALL_FORMATS: OutputFormat[] = ['claude', 'opencode', 'codex', 'qoder'];
 
 const ALL_SKILL_IDS = [
   'admin-ui-grid',
@@ -76,6 +67,7 @@ interface FormatOutput {
 
 describe('E2E smoke test — full lifecycle against simulated Magento 2 project', () => {
   let rootDir: string;
+  let homeDir: string;
   const outputs = new Map<OutputFormat, FormatOutput>();
 
   beforeEach(() => {
@@ -84,6 +76,8 @@ describe('E2E smoke test — full lifecycle against simulated Magento 2 project'
 
   beforeAll(async () => {
     rootDir = await mkdtemp(path.join(os.tmpdir(), 'magehub-smoke-'));
+    homeDir = await mkdtemp(path.join(os.tmpdir(), 'magehub-home-'));
+    vi.spyOn(os, 'homedir').mockReturnValue(homeDir);
 
     await mkdir(path.join(rootDir, 'app', 'etc'), { recursive: true });
     await writeFile(
@@ -190,6 +184,8 @@ describe('E2E smoke test — full lifecycle against simulated Magento 2 project'
     }
 
     await rm(rootDir, { recursive: true, force: true });
+    await rm(homeDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
   });
 
   it('initializes in a simulated Magento 2 project directory', () => {
@@ -255,15 +251,7 @@ describe('E2E smoke test — full lifecycle against simulated Magento 2 project'
       const result = outputs.get(format);
       expect(result).toBeDefined();
 
-      if (format === 'cursor') {
-        assertCursorFrontMatter(result!.files[0].content);
-        return;
-      }
       if (format === 'qoder') {
-        assertQoderFrontMatter(result!.files[0].content);
-        return;
-      }
-      if (format === 'claude' || format === 'opencode') {
         for (const file of result!.files) {
           const { data } = parseFrontMatter(file.content);
           expect(data).toHaveProperty('name');
@@ -272,16 +260,13 @@ describe('E2E smoke test — full lifecycle against simulated Magento 2 project'
         }
         return;
       }
-      if (format === 'trae') {
-        for (const file of result!.files) {
-          const { data } = parseFrontMatter(file.content);
-          expect(data).toHaveProperty('description');
-        }
-        return;
+      // claude, opencode, codex: all per-skill with name+description frontmatter
+      for (const file of result!.files) {
+        const { data } = parseFrontMatter(file.content);
+        expect(data).toHaveProperty('name');
+        expect(data).toHaveProperty('description');
+        expect(typeof data['description']).toBe('string');
       }
-      // codex: no frontmatter
-      const { data } = parseFrontMatter(result!.files[0].content);
-      expect(Object.keys(data).length).toBe(0);
     });
   });
 });
